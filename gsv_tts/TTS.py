@@ -459,7 +459,8 @@ class TTS:
         repetition_penalty: float = 1.35,
         noise_scale: float = 0.5,
         speed: float = 1.0,
-        batch_size: int = -1,
+        bert_batch_size: int = 20,
+        sovits_batch_size: int = 10,
         gpt_model: str = None,
         sovits_model: str = None,
     ) -> tuple[AudioClip]:
@@ -485,7 +486,8 @@ class TTS:
             repetition_penalty (float, optional): Penalty factor for repetition in the GPT model. Values > 1.0 penalize repetition.
             noise_scale (float, optional): Controls the standard deviation of the acoustic distribution in the SoVITS decoder. A certain amount of noise can enhance audio naturalness.
             speed (float, optional): Speed factor for the generated audio. 1.0 is normal speed, >1.0 is faster, <1.0 is slower.
-            batch_size (int, optional): Number of samples to process in one SoVITS forward pass.
+            bert_batch_size (int, optional): Number of samples to process in one Bert forward pass.
+            sovits_batch_size (int, optional): Number of samples to process in one SoVITS forward pass.
             gpt_model (str, optional): The GPT model to use for the inference.
             sovits_model (str, optional): The SoVITS model to use for the inference.
 
@@ -562,16 +564,27 @@ class TTS:
             orig_texts = texts
             texts = all_segments
 
-            if batch_size == -1:
-                batch_size = len(texts)
-
             logging.info("Processing text to phones and BERT features...")
+
+            all_phones2 = []
+            all_word2ph = []
+            all_bert2 = []
+            all_norm_text = []
+
+            for i in range(0, len(texts), bert_batch_size):
+                batch_texts = texts[i : i + bert_batch_size]
+                
+                batch_phones2, batch_word2ph, batch_bert2, batch_norm_text = get_phones_and_bert(batch_texts, self.tts_config)
+                
+                all_phones2.extend(batch_phones2)
+                all_word2ph.extend(batch_word2ph)
+                all_bert2.extend(batch_bert2)
+                all_norm_text.extend(batch_norm_text)
+            
             all_phoneme_ids = []
             all_prompts = []
             all_bert_features = []
             all_ge = []
-
-            all_phones2, all_word2ph, all_bert2, all_norm_text = get_phones_and_bert(texts, self.tts_config)
 
             for items in zip(texts, spk_audio_paths, prompt_audio_paths, prompt_audio_texts, all_phones2, all_bert2):
         
@@ -644,8 +657,8 @@ class TTS:
             generated_subtitles = []
             num_samples = len(pred_semantic)
 
-            for i in tqdm(range(0, num_samples, batch_size)):
-                batch_end = min(i + batch_size, num_samples)
+            for i in tqdm(range(0, num_samples, sovits_batch_size)):
+                batch_end = min(i + sovits_batch_size, num_samples)
                 
                 semantic_list = pred_semantic[i:batch_end]
                 curr_orig_indices = semantic_orig_idx[i:batch_end]
