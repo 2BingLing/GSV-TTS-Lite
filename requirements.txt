@@ -1,3 +1,4 @@
+static-ffmpeg
 einops
 tqdm
 torchcodec
