@@ -97,7 +97,7 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 #### 2. 安装 GSV-TTS-Lite
 若已准备好上述基础环境，可直接执行以下命令完成集成：
 ```bash
-pip install gsv-tts-lite==0.2.4 --prefer-binary
+pip install gsv-tts-lite==0.2.5 --prefer-binary
 ```
 
 ### 快速使用
