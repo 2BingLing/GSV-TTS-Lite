@@ -3,6 +3,7 @@ import torch
 import bisect
 
 from .config import Config
+from .LangSegment import LangSegment
 from .GPT_SoVITS.G2P import phonemes_to_ids, text_to_phonemes
 
 
@@ -39,59 +40,6 @@ def process_text(text, language):
     phones = phonemes_to_ids(phones_raw)
     return phones, word2ph, norm_text
 
-def segment_language_text(text):
-    re_ja_kana = re.compile(r'[\u3040-\u30ff\u31f0-\u31ff]') # 日文假名 (锚点)
-    re_hanzi = re.compile(r'[\u4e00-\u9fff]') # 所有的汉字 (中日通用)
-    re_en = re.compile(r'[a-zA-Z]')
-
-    tokens = []
-    for char in text:
-        if re_ja_kana.search(char):
-            lang = 'ja'
-        elif re_en.search(char):
-            lang = 'en'
-        elif re_hanzi.search(char):
-            lang = 'zh'
-        elif char.isdigit():
-            lang = 'digit'
-        else:
-            lang = 'punc'
-        tokens.append({'char': char, 'lang': lang})
-
-    window_size = 10 
-    for i in range(len(tokens)):
-        if tokens[i]['lang'] == 'zh':
-            start = max(0, i - window_size)
-            end = min(len(tokens), i + window_size)
-
-            for j in range(i-1, start-1, -1):
-                if tokens[j]['lang'] == 'punc':
-                    break
-                if tokens[j]['lang'] == 'ja':
-                    tokens[i]['lang'] = 'ja'
-                    break
-            
-            for j in range(i+1, end):
-                if tokens[j]['lang'] == 'punc':
-                    break
-                if tokens[j]['lang'] == 'ja':
-                    tokens[i]['lang'] = 'ja'
-                    break
-    
-    first_lang = ''
-    for token in tokens:
-        if not token['lang'] in ['punc', 'digit']:
-            first_lang = token['lang']
-            break
-    
-    merged_list = [['', first_lang]]
-    for token in tokens:
-        if token['lang'] in ['punc', 'digit'] or token['lang'] == merged_list[-1][1]:
-            merged_list[-1][0] += token['char']
-        else:
-            merged_list.append([token['char'], token['lang']])
-
-    return merged_list
 
 def get_phones_and_bert(texts, tts_config: Config):
     is_batch = True
@@ -107,20 +55,18 @@ def get_phones_and_bert(texts, tts_config: Config):
     bert_tasks = {"pos":[], "norm_text":[], "word2ph":[]}
 
     for text in texts:
-        text = re.sub(r' {2,}', ' ', text)
-        
-        merged_list = segment_language_text(text)
+        segments = LangSegment.getTexts(text)
 
         phones_list = []
         norm_text_list = []
         word2ph = {"word":[], "ph":[]}
         batch_bert.append([])
 
-        for orig_text, lang in merged_list:
-            phones, _word2ph, norm_text = process_text(orig_text, lang)
+        for segment in segments:
+            phones, _word2ph, norm_text = process_text(segment['text'], segment['lang'])
             word2ph["word"] += _word2ph["word"]
             word2ph["ph"] += _word2ph["ph"]
-            if tts_config.cnroberta and lang == "zh":
+            if tts_config.cnroberta and segment['lang'] == "zh":
                 bert_tasks["pos"].append((len(batch_bert) - 1, len(batch_bert[-1])))
                 bert_tasks["norm_text"].append(norm_text)
                 bert_tasks["word2ph"].append(_word2ph["ph"])
