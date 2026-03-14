@@ -85,7 +85,6 @@
 
 - **CUDA Toolkit**
 > [!WARNING]
-> **硬件兼容性限制**
 > 当前版本**仅支持 CUDA 推理后端**，**暂不支持** CPU 及 MPS 加速。
 > 未来计划集成 **ONNX Runtime** 以扩展硬件兼容性。
 
