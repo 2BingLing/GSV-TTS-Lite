@@ -66,7 +66,9 @@ As shown, **GSV-TTS-Lite** achieves **3x ~ 4x** speed improvements while **halvi
 ### Prerequisites
 
 - **CUDA Toolkit**
-- **Microsoft Visual C++**
+> [!WARNING]
+> The current version **only supports the CUDA inference backend** and **does not yet support** CPU and MPS acceleration.
+> Future plans include integrating **ONNX Runtime** to expand hardware compatibility.
 
 ### Installation Steps
 
@@ -79,7 +81,7 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 #### 2.	Install GSV-TTS-Lite
 If you have prepared the above basic environment, you can directly execute the following command to complete the integration:
 ```bash
-pip install gsv-tts-lite==0.2.7 --prefer-binary
+pip install gsv-tts-lite==0.3.1
 ```
 
 ### Quick Start
