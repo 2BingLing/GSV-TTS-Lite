@@ -69,6 +69,7 @@
 
 ### 環境準備
 
+- **FFmpeg**
 - **CUDA Toolkit**
 > [!IMPORTANT]
 > 現在のバージョンでは、CUDA、MPS (Apple Silicon)、および CPU 推論バックエンドを全面的にサポートしています。
@@ -79,13 +80,16 @@
 #### 1. 環境設定
 Python>=3.10 を使用して仮想環境を作成することを推奨します。
 ```bash
-# PyTorch のインストール
+# NVIDIA GPU (CUDA 12.8) の場合
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+
+# Apple Silicon (MPS) または Linux/Windows (CPU のみ) の場合
+pip install torch torchvision torchaudio
 ```
 #### 2. GSV-TTS-Lite のインストール
 上記の基本環境が準備できれば、以下のコマンドを実行するだけで統合が完了します：
 ```bash
-pip install gsv-tts-lite==0.3.3
+pip install gsv-tts-lite==0.3.4
 ```
 
 ### クイックスタート
@@ -115,7 +119,7 @@ tts.load_sovits_model()
 #     prompt_audio_texts="ちが……ちがう。レイア、貴様は間違っている。",
 # )
 
-# infer は最もシンプルで原始的な推論方式であり、短テキストの推論に適しています。
+# infer は最もシンプルで原始的な推論方式であり、短文の推論にのみ適しています。通常、infer の代わりに infer_batched を使用することが推奨されます。
 audio = tts.infer(
     spk_audio_path="examples\laffey.mp3", # 音色参照オーディオ
     prompt_audio_path="examples\AnAn.ogg", # スタイル参照オーディオ
