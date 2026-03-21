@@ -1,6 +1,9 @@
 from __future__ import annotations
 import gc
 import os
+import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 # 让 CUDA 算子同步执行，这样才能找到报错位置
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -111,6 +114,7 @@ class TTS:
         self.sovits_hz = 50
 
         self.audio_queue = AudioQueue(self.samplerate)
+        self._infer_lock = threading.Lock()
         
         logging.info(f"Device: {self.tts_config.device}")
         logging.info(f"Half: {self.tts_config.is_half}, dtype: {self.tts_config.dtype}")
@@ -445,7 +449,7 @@ class TTS:
         finally:
             self._empty_cache()
     
-    torch.inference_mode()
+    @torch.inference_mode()
     def infer_batched(
         self,
         spk_audio_paths: str | dict | list[str | dict],
@@ -1506,3 +1510,113 @@ class TTS:
                 torch.mps.empty_cache()
         except:
             pass
+    
+    async def infer_async(
+        self,
+        spk_audio_path: str | dict,
+        prompt_audio_path: str,
+        prompt_audio_text: str,
+        text: str,
+        top_k: int = 15,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
+        repetition_penalty: float = 1.35,
+        noise_scale: float = 0.5,
+        speed: float = 1.0,
+        gpt_model: str = None,
+        sovits_model: str = None,
+        executor: ThreadPoolExecutor = None,
+    ):
+        """
+        异步版本的 infer 方法，用于服务端并发处理请求。
+        
+        Args:
+            与 infer 方法相同的参数
+            executor: 可选的 ThreadPoolExecutor，如果不提供则使用默认的
+            
+        Returns:
+            AudioClip: 与 infer 方法相同
+        """
+        loop = asyncio.get_running_loop()
+        
+        def _infer_with_lock():
+            with self._infer_lock:
+                return self.infer(
+                    spk_audio_path,
+                    prompt_audio_path,
+                    prompt_audio_text,
+                    text,
+                    top_k=top_k,
+                    top_p=top_p,
+                    temperature=temperature,
+                    repetition_penalty=repetition_penalty,
+                    noise_scale=noise_scale,
+                    speed=speed,
+                    gpt_model=gpt_model,
+                    sovits_model=sovits_model,
+                )
+        
+        if executor is None:
+            return await loop.run_in_executor(None, _infer_with_lock)
+        else:
+            return await loop.run_in_executor(executor, _infer_with_lock)
+    
+    async def infer_batched_async(
+        self,
+        spk_audio_paths: str | dict | list[str | dict],
+        prompt_audio_paths: str | list[str],
+        prompt_audio_texts: str | list[str],
+        texts: str | list[str],
+        return_subtitles: bool = False,
+        is_cut_text: bool = True,
+        cut_minlen: int = 10,
+        cut_mute: int = 0.2,
+        cut_mute_scale_map: dict = {".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5,",": 0.8, "，": 0.8, "、": 0.6, "・": 0.6},
+        top_k: int = 15,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
+        repetition_penalty: float = 1.35,
+        noise_scale: float = 0.5,
+        speed: float = 1.0,
+        gpt_model: str = None,
+        sovits_model: str = None,
+        executor: ThreadPoolExecutor = None,
+    ):
+        """
+        异步版本的 infer_batched 方法，用于服务端并发处理批量请求。
+        
+        Args:
+            与 infer_batched 方法相同的参数
+            executor: 可选的 ThreadPoolExecutor，如果不提供则使用默认的
+            
+        Returns:
+            list[AudioClip]: 与 infer_batched 方法相同
+        """
+        loop = asyncio.get_running_loop()
+        
+        def _infer_batched_with_lock():
+            with self._infer_lock:
+                return self.infer_batched(
+                    spk_audio_paths,
+                    prompt_audio_paths,
+                    prompt_audio_texts,
+                    texts,
+                    return_subtitles=return_subtitles,
+                    is_cut_text=is_cut_text,
+                    cut_minlen=cut_minlen,
+                    cut_mute=cut_mute,
+                    cut_mute_scale_map=cut_mute_scale_map,
+                    top_k=top_k,
+                    top_p=top_p,
+                    temperature=temperature,
+                    repetition_penalty=repetition_penalty,
+                    noise_scale=noise_scale,
+                    speed=speed,
+                    gpt_model=gpt_model,
+                    sovits_model=sovits_model,
+                )
+        
+        if executor is None:
+            return await loop.run_in_executor(None, _infer_batched_with_lock)
+        else:
+            return await loop.run_in_executor(executor, _infer_batched_with_lock)
