@@ -3,7 +3,7 @@ import re
 from pypinyin import lazy_pinyin, Style
 from typing import List
 
-from ..Pause import pause_map
+from ..Pause import pause_map, escaped_pause
 from .tone_sandhi import ToneSandhi
 from .Normalization.text_normlization import TextNormalizer
 
@@ -213,6 +213,9 @@ class ChineseG2P:
         tx = TextNormalizer()
         sentences = tx.normalize(text)
         text = "".join(sentences)
+        
+        text = re.sub(f"[^\u4e00-\u9fa50-9{escaped_pause}]", '', text) # 匹配 非汉字、非数字、非允许标点 的所有字符并替换为空
+        
         text = text.replace("嗯", "恩").replace("呣", "母")
         return text
     

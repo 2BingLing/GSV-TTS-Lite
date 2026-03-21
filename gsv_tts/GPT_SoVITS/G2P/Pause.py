@@ -1,3 +1,5 @@
+import re
+
 pause_map = {
     "!": "!",
     "！": "!",
@@ -20,3 +22,5 @@ pause_map = {
     "、": ",",
     "・": ",",
 }
+
+escaped_pause = re.escape("".join(pause_map.keys()))

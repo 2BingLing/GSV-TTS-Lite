@@ -3,6 +3,7 @@ import os
 import re
 import wordsegment
 from .g2p_en import G2p
+from ..Pause import escaped_pause
 
 from builtins import str as unicode
 from .Normalization.expend import normalize
@@ -212,6 +213,10 @@ class EnglishG2P(G2p):
     def text_normalize(self, text):
         text = unicode(text)
         text = normalize(text)
+
+        text = re.sub(f"[^a-zA-Z0-9\s{escaped_pause}]", '', text) # 匹配 非字母、非数字、非空格、非允许标点 的所有字符
+        text = re.sub(r'\s+', ' ', text) # 将多个空格合并为一个
+
         return text
     
     def g2p(self, text):
