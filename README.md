@@ -112,9 +112,6 @@ pip install gsv-tts-lite==0.3.7
 
 ### WebUI 可视化界面
 
-> [!TIP]
-> WebUI 模块与本地源码解耦，它直接调用已发布的`gsv-tts-lite`。
-
 1. **安装依赖**：
   ```bash
   cd WebUI
@@ -124,6 +121,16 @@ pip install gsv-tts-lite==0.3.7
   ```bash
   python web.py
   ```
+
+### API 服务接口
+
+1. **安装依赖**：
+  ```bash
+  cd API
+  pip install -r requirements.txt
+  ```
+2. **核心文档**：
+   [进入 API 详细指南目录 ➔](https://github.com/chinokikiss/GSV-TTS-Lite/tree/main/API)
 
 ### Python SDK 接口调用
 
