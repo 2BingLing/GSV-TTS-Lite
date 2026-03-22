@@ -92,7 +92,29 @@ If you have prepared the above basic environment, you can directly execute the f
 pip install gsv-tts-lite==0.3.7
 ```
 
-### Quick Start
+### WebUI Visual Interface
+
+1. **Install Dependencies**：
+  ```bash
+  cd WebUI
+  pip install -r requirements.txt
+  ```
+2. **Start the Program**：
+  ```bash
+  python web.py
+  ```
+
+### API Service Interface
+
+1. **Install Dependencies**：
+  ```bash
+  cd API
+  pip install -r requirements.txt
+  ```
+2. **Core Documentation**：
+   [Go to API Detailed Guide Directory ➔](https://github.com/chinokikiss/GSV-TTS-Lite/tree/main/API)
+
+### Python SDK Interface
 
 > [!TIP]
 > The program will automatically download the required pre-trained models upon the first run.
