@@ -38,7 +38,7 @@ python test_async_performance.py
   python fastapi_server_example.py
   ```
 - **用途**：RESTful API 服务，适合服务端部署
-- **特点**：异步处理，支持并发请求
+- **特点**：异步处理，支持并发请求、外链音频、自动 ASR
 
 ## 💡 3. 怎么使用异步功能
 
@@ -79,10 +79,11 @@ asyncio.run(main())
 #### 1. 安装依赖
 
 ```bash
-pip install fastapi uvicorn requests httpx
+cd API
+pip install -r requirements.txt
 ```
 
-> **注意**：`httpx` 用于下载外链音频。
+> **依赖说明**：`httpx` 用于下载外链音频。
 
 #### 2. 启动服务
 
@@ -96,6 +97,8 @@ python fastapi_server_example.py
 ```
 🚀 正在加载 TTS 模型...
 ✅ TTS 模型加载完成！
+🚀 正在加载 ASR 模型...
+✅ ASR 模型加载完成！
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 ```
 
@@ -124,6 +127,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
   }
   ```
   > **注意**：`prompt_text` 可选，如果不提供会自动使用 ASR 识别。`speaker_audio` 和 `prompt_audio` 支持本地路径或外链 URL。
+
 - **响应示例**：
   ```json
   {
@@ -133,18 +137,6 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
     "prompt_text_used": "ちが……ちがう。レイア、貴様は間違っている。"
   }
   ```
-
-**使用外链音频**：
-
-```json
-{
-  "text": "你好，这是测试。",
-  "speaker_audio": "https://example.com/speaker.mp3",
-  "prompt_audio": "https://example.com/prompt.ogg"
-}
-```
-
-> 会自动下载外链音频，并使用 ASR 自动识别 prompt\_audio 的文本。
 
 **批量 TTS 请求**：
 
@@ -173,62 +165,14 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 - **接口**：`GET /audio/{filename}`
 - **示例**：`http://localhost:8000/audio/tts_06a1a5fc.wav`
 
-#### 5. 使用 Python 测试 API
+## 🌐 4. 外链音频支持
 
-```python
-import requests
-from pathlib import Path
-
-# 获取项目根目录（假设脚本在项目根目录运行）
-project_root = Path.cwd()
-
-# 单个请求
-response = requests.post(
-    "http://localhost:8000/tts/single",
-    json={
-        "text": "你好，这是测试。",
-        "speaker_audio": str(project_root / "examples" / "laffey.mp3"),
-        "prompt_audio": str(project_root / "examples" / "AnAn.ogg"),
-        "prompt_text": "ちが……ちがう。レイア、貴様は間違っている。"
-    }
-)
-print(response.json())
-
-# 批量请求
-response = requests.post(
-    "http://localhost:8000/tts/batch",
-    json={
-        "texts": ["第一个请求", "第二个请求"],
-        "speaker_audio": str(project_root / "examples" / "laffey.mp3"),
-        "prompt_audio": str(project_root / "examples" / "AnAn.ogg"),
-        "prompt_text": "ちが……ちがう。レイア、貴様は間違っている。"
-    }
-)
-print(response.json())
-```
-
-#### 6. 测试脚本
-
-运行测试脚本：
-
-```bash
-cd API
-python test_async_performance.py
-```
-
-## 📝 4.外链支持
-
-### 外链音频支持
+### 功能特性
 
 - ✅ `speaker_audio` 和 `prompt_audio` 支持本地路径或 HTTP/HTTPS URL
 - ✅ 自动下载外链音频到临时文件
 - ✅ 支持常见音频格式：mp3、wav、ogg、flac
-
-### 自动 ASR 识别
-
-- ✅ `prompt_text` 参数可选
-- ✅ 如果不提供 `prompt_text`，会自动使用 ASR 模型识别 `prompt_audio` 的文本
-- ✅ 使用 Qwen3-ASR-0.6B 模型进行语音识别
+- ✅ `prompt_text` 参数可选，自动使用 ASR 识别
 - ✅ 响应中返回 `prompt_text_used` 字段，显示实际使用的文本
 
 ### 环境变量
@@ -238,20 +182,46 @@ python test_async_performance.py
 
 ### 示例：使用外链音频
 
+**Python 请求示例**：
+
 ```python
 import requests
+
+# 外链音频 URL
+PROMPT_AUDIO_URL = "https://example.com/prompt.mp3"
 
 response = requests.post(
     "http://localhost:8000/tts/single",
     json={
-        "text": "你好，这是测试。",
-        "speaker_audio": "https://example.com/speaker.mp3",
-        "prompt_audio": "https://example.com/prompt.ogg"
-        # 不需要 prompt_text，会自动识别
-    }
+        "text": "你好，这是外链音频测试。",
+        "speaker_audio": "examples/laffey.mp3",
+        "prompt_audio": PROMPT_AUDIO_URL
+        # 不需要 prompt_text，会自动 ASR 识别
+    },
+    timeout=120
 )
+
 print(response.json())
-# 输出: {"success": true, "audio_len": 1.72, "filename": "tts_xxx.wav", "prompt_text_used": "自动识别的文本"}
+# 输出: {"success": true, "audio_len": 4.08, "filename": "tts_xxx.wav", "prompt_text_used": "自动识别的文本"}
+```
+
+**curl 请求示例**：
+
+```bash
+curl -X POST "http://localhost:8000/tts/single" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "你好，这是外链音频测试。",
+    "speaker_audio": "examples/laffey.mp3",
+    "prompt_audio": "https://example.com/prompt.mp3"
+  }'
+```
+
+### 测试脚本
+
+```bash
+cd API
+python test_url_audio.py
 ```
 
 ## 📝 5. 技术细节
@@ -266,8 +236,6 @@ print(response.json())
 
 - **同步逐个处理**：串行执行，适合少量请求
 - **异步批处理**：GPU 并行处理，适合批量请求，效率更高
-
-  <br />
 
 ## 🔍 6. 常见问题
 
@@ -295,6 +263,14 @@ A: 在 `fastapi_server_example.py` 中修改：
 uvicorn.run(app, host="0.0.0.0", port=8001)  # 改为其他端口
 ```
 
+### Q: 外链音频下载失败怎么办？
+
+A: 检查 URL 是否可访问，确保网络连接正常。`httpx` 默认超时为 60 秒。
+
+### Q: ASR 识别不准确怎么办？
+
+A: 可以手动提供 `prompt_text` 参数，或者确保 `prompt_audio` 音质清晰。
+
 ## 🎯 7. 最佳实践
 
 1. **服务端部署**：使用 FastAPI 示例，提供 RESTful API
@@ -302,6 +278,7 @@ uvicorn.run(app, host="0.0.0.0", port=8001)  # 改为其他端口
 3. **预热模型**：在服务启动时预热模型，避免首次请求延迟
 4. **错误处理**：在生产环境中添加适当的错误处理
 5. **端口管理**：确保端口不被占用，必要时修改端口号
+6. **外链音频**：确保 URL 可访问，建议使用 CDN 加速
 
 ## 🚀 8. 快速开始
 
@@ -320,6 +297,9 @@ python fastapi_server_example.py
 
 # 4. 测试性能
 python test_async_performance.py
+
+# 5. 测试外链音频
+python test_url_audio.py
 ```
 
 **推荐**：部署到服务端时使用 FastAPI 示例或 TTS 类的 `infer_async()` 方法！

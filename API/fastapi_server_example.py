@@ -22,7 +22,7 @@ import logging
 
 app = FastAPI(title="GSV-TTS 异步 API", version="1.1")
 
-models_dir = project_root / "WebUI" / "models"
+models_dir = project_root / "API" / "models"
 output_dir = project_root / "output"
 output_dir.mkdir(exist_ok=True)
 
@@ -70,7 +70,13 @@ def transcribe_audio(audio_path: str) -> str:
     
     results = asr.transcribe(audio_path)
     if results and len(results) > 0:
-        text = results[0].get("text", "")
+        result = results[0]
+        if hasattr(result, 'text'):
+            text = result.text
+        elif isinstance(result, dict):
+            text = result.get("text", "")
+        else:
+            text = str(result)
         logging.info(f"ASR识别结果: {text}")
         return text
     return ""
