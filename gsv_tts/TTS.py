@@ -39,10 +39,10 @@ class TTS:
     def __init__(
         self,
         gpt_cache: list[tuple[int, int]] = [(1, 512), (1, 1024), (4, 512), (4, 1024)],
-        sovits_cache: list[int] = [50],
         models_dir: str = None,
         device: str = None,
         is_half: bool = None,
+        compile_mode: Literal[None, "default-optimized", "max-optimized"] = None,
         use_flash_attn: bool = False,
         use_bert: bool = False,
         use_jieba_fast: bool = False,
@@ -54,13 +54,16 @@ class TTS:
 
         Args:
             gpt_cache (list[tuple[int, int]]): Static cache sizes for the GPT model's CUDA graph. Each tuple represents (batch_size, sequence_length).
-            sovits_cache (list[int]): Static cache sizes for the SoVITS model's CUDA graph.
             models_dir (str): The directory path containing the pretrained model files.
             device (str): The device to run the model on.
             is_half (bool): Whether to use half-precision (FP16) inference.
+            compile_mode (Literal[None, "default-optimized", "max-optimized"]): Specifies the optimization mode for `torch.compile`. `triton` needs to be installed.
+                - None: Disable compilation (Eager mode).
+                - "default-optimized": Standard optimization to improve inference speed (SoVITS).
+                - "max-optimized": Not fully developed yet (GPT、SoVITS、BERT).
             use_flash_attn (bool): Whether to enable Flash Attention for faster inference.
             use_bert (bool): Whether to use BERT for enhanced Chinese semantic understanding.
-            use_jieba_fast (bool): Whether to use jieba-fast for faster Chinese text segmentation. jieba-fast needs to be installed.
+            use_jieba_fast (bool): Whether to use jieba-fast for faster Chinese text segmentation. `jieba-fast` needs to be installed.
             always_load_cnhubert (bool): Whether to keep the CNHubert model loaded in VRAM. Set to True to accelerate Voice Conversion.
             always_load_sv (bool): Whether to keep the Speaker Verification model loaded in VRAM. Set to True to accelerate Speaker Verification.
         """
@@ -80,9 +83,9 @@ class TTS:
         self.models_dir = models_dir
         if global_config.models_dir is None: global_config.models_dir = models_dir
         if global_config.use_jieba_fast is None: global_config.use_jieba_fast = use_jieba_fast
+        self.tts_config.compile_mode = compile_mode
         self.tts_config.use_flash_attn = use_flash_attn
         self.tts_config.gpt_cache = gpt_cache
-        self.tts_config.sovits_cache = sovits_cache
 
         self.gpt_models: dict[str, Gpt] = {}
         self.sovits_models: dict[str, Sovits] = {}
@@ -210,10 +213,9 @@ class TTS:
 
             logging.info("Running SoVITS inference (Semantic-to-Waveform)...")
             phones2_tensor = torch.LongTensor(phones2).to(self.tts_config.device).unsqueeze(0)
-            encoded_text, text_mask = vq_model.enc_p.text_encode(phones2_tensor)
 
             audio, attn = vq_model.decode(
-                pred_semantic, encoded_text, text_mask, ge, noise_scale=noise_scale, speed=speed
+                pred_semantic, phones2_tensor, ge, noise_scale=noise_scale, speed=speed
             )
 
             audio = audio[0, 0, :].cpu().numpy()
@@ -285,7 +287,7 @@ class TTS:
             cut_minlen (int, optional): The minimum length of a text segment. Segments shorter than this will be merged.
             cut_mute (float, optional): Duration of silence (in seconds) to insert between text segments.
             cut_mute_scale_map (dict, optional): A mapping to scale the mute duration (cut_mute) for specific punctuation marks.
-            stream_mode (str, optional): The strategy for streaming. "token" yields audio as a specific chunk size of GPT tokens is accumulated; "sentence" yields audio after completing full sentences.
+            stream_mode (Literal["token", "sentence"], optional): The strategy for streaming. "token" yields audio as a specific chunk size of GPT tokens is accumulated; "sentence" yields audio after completing full sentences.
             stream_chunk (int, optional): The number of tokens to process in one chunk when using 'token' mode.
             overlap_len (int, optional): The number of overlapping tokens between chunks to ensure smooth audio transitions.
             boost_first_chunk (bool, optional): If True, reduces initial latency but may introduce noise in short audio.
@@ -369,7 +371,6 @@ class TTS:
                 )
 
                 phones2_tensor = torch.LongTensor(phones2).to(self.tts_config.device).unsqueeze(0)
-                encoded_text, text_mask = vq_model.enc_p.text_encode(phones2_tensor)
 
                 last_subtitles_end = 0
                 last_overlap_audio = None
@@ -378,8 +379,7 @@ class TTS:
                 for pred_semantic, is_final in generator:
                     audio, attn = vq_model.decode(
                         pred_semantic,
-                        encoded_text,
-                        text_mask,
+                        phones2_tensor,
                         ge,
                         noise_scale=noise_scale,
                         speed=speed,
@@ -707,11 +707,9 @@ class TTS:
 
                 # ge [B, D, T]
                 # semantic [n_q, B, N]
-                
-                encoded_text, text_mask = vq_model.enc_p.text_encode(curr_phones2)
 
                 audio_batch, attn = vq_model.decode(
-                    curr_semantic, encoded_text, text_mask, curr_ge, noise_scale=noise_scale, speed=speed, cuda_graph=False, slice_indices=slice_indices
+                    curr_semantic, curr_phones2, curr_ge, noise_scale=noise_scale, speed=speed, slice_indices=slice_indices
                 )
 
                 audio_batch = audio_batch[0, 0, :]
@@ -880,11 +878,10 @@ class TTS:
             phones, word2ph, _, norm_text = get_phones_and_bert(prompt_audio_text, self.tts_config)
 
             phones_tensor = torch.LongTensor(phones).to(self.tts_config.device).unsqueeze(0)
-            encoded_text, text_mask = vq_model.enc_p.text_encode(phones_tensor)
 
             logging.info("Running SoVITS inference (Semantic-to-Waveform)...")
             audio, attn = vq_model.decode(
-                prompt.unsqueeze(0), encoded_text, text_mask, ge, noise_scale=noise_scale, speed=speed
+                prompt.unsqueeze(0), phones_tensor, ge, noise_scale=noise_scale, speed=speed
             )
 
             audio = audio[0, 0, :].cpu().numpy()
@@ -916,6 +913,116 @@ class TTS:
         
         finally:
             self._empty_cache()
+
+    async def infer_async(
+        self,
+        spk_audio_path: str | dict,
+        prompt_audio_path: str,
+        prompt_audio_text: str,
+        text: str,
+        top_k: int = 15,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
+        repetition_penalty: float = 1.35,
+        noise_scale: float = 0.5,
+        speed: float = 1.0,
+        gpt_model: str = None,
+        sovits_model: str = None,
+        executor: ThreadPoolExecutor = None,
+    ):
+        """
+        Asynchronous version of the infer method, designed for concurrent request handling in a server environment.
+        
+        Args:
+            Parameters are identical to the 'infer' method.
+            executor: Optional ThreadPoolExecutor. If not provided, the default executor will be used.
+            
+        Returns:
+            AudioClip: Same return type as the 'infer' method.
+        """
+        loop = asyncio.get_running_loop()
+        
+        def _infer_with_lock():
+            with self._infer_lock:
+                return self.infer(
+                    spk_audio_path,
+                    prompt_audio_path,
+                    prompt_audio_text,
+                    text,
+                    top_k=top_k,
+                    top_p=top_p,
+                    temperature=temperature,
+                    repetition_penalty=repetition_penalty,
+                    noise_scale=noise_scale,
+                    speed=speed,
+                    gpt_model=gpt_model,
+                    sovits_model=sovits_model,
+                )
+        
+        if executor is None:
+            return await loop.run_in_executor(None, _infer_with_lock)
+        else:
+            return await loop.run_in_executor(executor, _infer_with_lock)
+    
+    async def infer_batched_async(
+        self,
+        spk_audio_paths: str | dict | list[str | dict],
+        prompt_audio_paths: str | list[str],
+        prompt_audio_texts: str | list[str],
+        texts: str | list[str],
+        return_subtitles: bool = False,
+        is_cut_text: bool = True,
+        cut_minlen: int = 10,
+        cut_mute: int = 0.2,
+        cut_mute_scale_map: dict = {".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, "…": 1.5, ",": 0.8, "，": 0.8, ":": 0.8, "：": 0.8, ";": 0.8, "；": 0.8, "~": 0.8, "、": 0.6, "・": 0.6},
+        top_k: int = 15,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
+        repetition_penalty: float = 1.35,
+        noise_scale: float = 0.5,
+        speed: float = 1.0,
+        gpt_model: str = None,
+        sovits_model: str = None,
+        executor: ThreadPoolExecutor = None,
+    ):
+        """
+        Asynchronous version of the infer_batched method, designed for concurrent batch request processing in a server environment.
+        
+        Args:
+            Parameters are identical to the 'infer_batched' method.
+            executor: Optional ThreadPoolExecutor. If not provided, the default executor will be used.
+            
+        Returns:
+            list[AudioClip]: Same return type as the 'infer_batched' method.
+        """
+        loop = asyncio.get_running_loop()
+        
+        def _infer_batched_with_lock():
+            with self._infer_lock:
+                return self.infer_batched(
+                    spk_audio_paths,
+                    prompt_audio_paths,
+                    prompt_audio_texts,
+                    texts,
+                    return_subtitles=return_subtitles,
+                    is_cut_text=is_cut_text,
+                    cut_minlen=cut_minlen,
+                    cut_mute=cut_mute,
+                    cut_mute_scale_map=cut_mute_scale_map,
+                    top_k=top_k,
+                    top_p=top_p,
+                    temperature=temperature,
+                    repetition_penalty=repetition_penalty,
+                    noise_scale=noise_scale,
+                    speed=speed,
+                    gpt_model=gpt_model,
+                    sovits_model=sovits_model,
+                )
+        
+        if executor is None:
+            return await loop.run_in_executor(None, _infer_batched_with_lock)
+        else:
+            return await loop.run_in_executor(executor, _infer_batched_with_lock)
     
     def _prepare_gpt_resources(self, gpt_model, prompt_audio_path, prompt_audio_text):
         if gpt_model not in self.gpt_models:
@@ -1510,113 +1617,3 @@ class TTS:
                 torch.mps.empty_cache()
         except:
             pass
-    
-    async def infer_async(
-        self,
-        spk_audio_path: str | dict,
-        prompt_audio_path: str,
-        prompt_audio_text: str,
-        text: str,
-        top_k: int = 15,
-        top_p: float = 1.0,
-        temperature: float = 1.0,
-        repetition_penalty: float = 1.35,
-        noise_scale: float = 0.5,
-        speed: float = 1.0,
-        gpt_model: str = None,
-        sovits_model: str = None,
-        executor: ThreadPoolExecutor = None,
-    ):
-        """
-        异步版本的 infer 方法，用于服务端并发处理请求。
-        
-        Args:
-            与 infer 方法相同的参数
-            executor: 可选的 ThreadPoolExecutor，如果不提供则使用默认的
-            
-        Returns:
-            AudioClip: 与 infer 方法相同
-        """
-        loop = asyncio.get_running_loop()
-        
-        def _infer_with_lock():
-            with self._infer_lock:
-                return self.infer(
-                    spk_audio_path,
-                    prompt_audio_path,
-                    prompt_audio_text,
-                    text,
-                    top_k=top_k,
-                    top_p=top_p,
-                    temperature=temperature,
-                    repetition_penalty=repetition_penalty,
-                    noise_scale=noise_scale,
-                    speed=speed,
-                    gpt_model=gpt_model,
-                    sovits_model=sovits_model,
-                )
-        
-        if executor is None:
-            return await loop.run_in_executor(None, _infer_with_lock)
-        else:
-            return await loop.run_in_executor(executor, _infer_with_lock)
-    
-    async def infer_batched_async(
-        self,
-        spk_audio_paths: str | dict | list[str | dict],
-        prompt_audio_paths: str | list[str],
-        prompt_audio_texts: str | list[str],
-        texts: str | list[str],
-        return_subtitles: bool = False,
-        is_cut_text: bool = True,
-        cut_minlen: int = 10,
-        cut_mute: int = 0.2,
-        cut_mute_scale_map: dict = {".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5,",": 0.8, "，": 0.8, "、": 0.6, "・": 0.6},
-        top_k: int = 15,
-        top_p: float = 1.0,
-        temperature: float = 1.0,
-        repetition_penalty: float = 1.35,
-        noise_scale: float = 0.5,
-        speed: float = 1.0,
-        gpt_model: str = None,
-        sovits_model: str = None,
-        executor: ThreadPoolExecutor = None,
-    ):
-        """
-        异步版本的 infer_batched 方法，用于服务端并发处理批量请求。
-        
-        Args:
-            与 infer_batched 方法相同的参数
-            executor: 可选的 ThreadPoolExecutor，如果不提供则使用默认的
-            
-        Returns:
-            list[AudioClip]: 与 infer_batched 方法相同
-        """
-        loop = asyncio.get_running_loop()
-        
-        def _infer_batched_with_lock():
-            with self._infer_lock:
-                return self.infer_batched(
-                    spk_audio_paths,
-                    prompt_audio_paths,
-                    prompt_audio_texts,
-                    texts,
-                    return_subtitles=return_subtitles,
-                    is_cut_text=is_cut_text,
-                    cut_minlen=cut_minlen,
-                    cut_mute=cut_mute,
-                    cut_mute_scale_map=cut_mute_scale_map,
-                    top_k=top_k,
-                    top_p=top_p,
-                    temperature=temperature,
-                    repetition_penalty=repetition_penalty,
-                    noise_scale=noise_scale,
-                    speed=speed,
-                    gpt_model=gpt_model,
-                    sovits_model=sovits_model,
-                )
-        
-        if executor is None:
-            return await loop.run_in_executor(None, _infer_batched_with_lock)
-        else:
-            return await loop.run_in_executor(executor, _infer_batched_with_lock)

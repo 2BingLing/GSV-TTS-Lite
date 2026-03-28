@@ -21,29 +21,29 @@ def cut_text(text, cut_minlen=10):
     text_cuts = []
     punds_pattern = r'([，,；;：:、~・]|[\.]{2,}|…+)'
 
+    clauses = []
     for sentence in sentences:
         parts = re.split(punds_pattern, sentence)
         
-        temp_list = []
         for i in range(0, len(parts)-1, 2):
             clause = parts[i] + parts[i+1]
-            temp_list.append(clause)
+            clauses.append(clause)
         
         if len(parts) % 2 != 0 and parts[-1]:
-            temp_list.append(parts[-1])
+            clauses.append(parts[-1])
 
-        current_segment = ""
-        for s in temp_list:
-            current_segment += s
-            if get_semantic_length(current_segment) >= cut_minlen:
-                text_cuts.append(current_segment)
-                current_segment = ""
-        
-        if current_segment:
-            if text_cuts:
-                text_cuts[-1] += current_segment
-            else:
-                text_cuts.append(current_segment)
+    current_segment = ""
+    for s in clauses:
+        current_segment += s
+        if get_semantic_length(current_segment) >= cut_minlen:
+            text_cuts.append(current_segment)
+            current_segment = ""
+    
+    if current_segment:
+        if text_cuts:
+            text_cuts[-1] += current_segment
+        else:
+            text_cuts.append(current_segment)
 
     # 确保至少返回一个非空文本段
     if not text_cuts and text:

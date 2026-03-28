@@ -7,12 +7,12 @@ class JapaneseG2P:
     def __init__(self):
         # Regular expression matching Japanese without punctuation marks:
         self._japanese_characters = re.compile(
-            r"[A-Za-z\d\u3005\u3040-\u30ff\u4e00-\u9fff\uff11-\uff19\uff21-\uff3a\uff41-\uff5a\uff66-\uff9d]"
+            r"[A-Za-z\d\u3005\u3040-\u30fa\u30fc-\u30ff\u4e00-\u9fff\uff11-\uff19\uff21-\uff3a\uff41-\uff5a\uff66-\uff9d]"
         )
 
         # Regular expression matching non-Japanese characters or punctuation marks:
         self._japanese_marks = re.compile(
-            r"[^A-Za-z\d\u3005\u3040-\u30ff\u4e00-\u9fff\uff11-\uff19\uff21-\uff3a\uff41-\uff5a\uff66-\uff9d]"
+            r"[^A-Za-z\d\u3005\u3040-\u30fa\u30fc-\u30ff\u4e00-\u9fff\uff11-\uff19\uff21-\uff3a\uff41-\uff5a\uff66-\uff9d]"
         )
 
         # List of (symbol, Japanese) pairs for marks:
@@ -124,6 +124,7 @@ class JapaneseG2P:
         text = text.lower()
         sentences = re.split(self._japanese_marks, text)
         marks = re.findall(self._japanese_marks, text)
+
         text = []
         word2ph = {"word":[], "ph":[]}
         for i, sentence in enumerate(sentences):
@@ -141,6 +142,7 @@ class JapaneseG2P:
                 text += [marks[i].replace(" ", "")]
                 word2ph["word"].append(marks[i])
                 word2ph["ph"].append(1)
+                
         return text, word2ph
 
     def g2p(self, norm_text, with_prosody=True):

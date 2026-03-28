@@ -191,19 +191,15 @@ class TextEncoder(nn.Module):
 
         self.y_overlap = None
     
-    def text_encode(self, text):
+    def infer(self, y, text, ge, speed, stream_mode=False, valid_start_idx=None, overlap_len=None, slice_indices=None):
+        y_mask = torch.ones((1, 1, y.size(2)), dtype=y.dtype, device=y.device)
+        y = self.ssl_proj(y * y_mask) * y_mask
+        y = self.encoder_ssl(y * y_mask, y_mask)
+
         text_mask = torch.ones((1, 1, text.size(1)), dtype=text.dtype, device=text.device)
         text = self.text_embedding(text)
         text = text.transpose(1, 2)
         text = self.encoder_text(text * text_mask, text_mask)
-
-        return text, text_mask
-    
-    def infer(self, y, text, text_mask, ge, speed, stream_mode=False, valid_start_idx=None, overlap_len=None, slice_indices=None):
-        y_mask = torch.ones((1, 1, y.size(2)), dtype=y.dtype, device=y.device)
-
-        y = self.ssl_proj(y * y_mask) * y_mask
-        y = self.encoder_ssl(y * y_mask, y_mask)
 
         y = self.mrte(y, y_mask, text, text_mask, ge, slice_indices)
         y = self.encoder2(y * y_mask, y_mask)
@@ -226,17 +222,10 @@ class TextEncoder(nn.Module):
         return m, logs, y_mask
 
 
-class Bucket:
-    dec_o: torch.Tensor = None
-    flow_z_p_padded: torch.Tensor = None
-    flow_y_mask_padded: torch.Tensor = None
-    flow_ge: torch.Tensor = None
-    vits_cuda_graph = None  # 改为通用类型，支持 None 或非 CUDA 设备
-    sovits_cache: int = None
-
 class SynthesizerTrn(nn.Module):
     def __init__(
         self,
+        compile_mode,
         spec_channels,
         segment_size,
         inter_channels,
@@ -313,48 +302,9 @@ class SynthesizerTrn(nn.Module):
         self.ge_to512 = nn.Linear(gin_channels, 512)
         self.prelu = nn.PReLU(num_parameters=gin_channels)
 
-        self.cuda_graph_buckets = {}
-    
-    @torch.inference_mode()
-    def warmup(self, dtype, device, sovits_caches):
-        batch_size = 1
-
-        # 检查是否使用 CUDA Graph（仅 CUDA 设备支持）
-        use_cuda_graph = device.type == "cuda"
-
-        if use_cuda_graph:
-            s = torch.cuda.Stream()
-            s.wait_stream(torch.cuda.current_stream())
-            stream_context = torch.cuda.stream(s)
-        else:
-            stream_context = torch.no_grad()
-
-        with stream_context:
-            for sovits_cache in sovits_caches:
-                self.cuda_graph_buckets[(batch_size, sovits_cache)] = Bucket()
-                bucket: Bucket = self.cuda_graph_buckets[(batch_size, sovits_cache)]
-
-                bucket.sovits_cache = sovits_cache
-
-                bucket.flow_z_p_padded = torch.zeros((batch_size, self.enc_p.latent_channels, sovits_cache), dtype=dtype, device=device)
-                bucket.flow_y_mask_padded = torch.zeros((batch_size, 1, sovits_cache), dtype=dtype, device=device)
-                bucket.flow_ge = torch.zeros((batch_size, 1024, 1), dtype=dtype, device=device)
-
-                # 预热运行
-                for _ in range(3):
-                    z = self.flow(bucket.flow_z_p_padded, bucket.flow_y_mask_padded, bucket.flow_ge)
-                    self.dec(z * bucket.flow_y_mask_padded, g=bucket.flow_ge)
-
-                if use_cuda_graph:
-                    torch.cuda.current_stream().synchronize()
-
-                    bucket.vits_cuda_graph = torch.cuda.CUDAGraph()
-                    with torch.cuda.graph(bucket.vits_cuda_graph):
-                        z = self.flow(bucket.flow_z_p_padded, bucket.flow_y_mask_padded, bucket.flow_ge)
-                        bucket.dec_o = self.dec(z * bucket.flow_y_mask_padded, g=bucket.flow_ge)
-
-        if use_cuda_graph:
-            torch.cuda.current_stream().wait_stream(s)
+        if compile_mode == "default-optimized" or compile_mode == "max-optimized":
+            self.flow.forward = torch.compile(self.flow.forward, mode="default", dynamic=True, fullgraph=True)
+            self.dec.forward = torch.compile(self.dec.forward, mode="default", dynamic=True, fullgraph=True)
     
     def get_ge(self, refer, sv_emb):
         refer_mask = torch.ones((1, 1, refer.size(2)), dtype=refer.dtype, device=refer.device)
@@ -366,7 +316,7 @@ class SynthesizerTrn(nn.Module):
         return ge
     
     @torch.inference_mode()
-    def decode(self, codes, text, text_mask, ge, noise_scale=0.5, speed=1, cuda_graph=True, stream_mode=False, valid_start_idx=None, overlap_len=None, slice_indices=None):
+    def decode(self, codes, text, ge, noise_scale=0.5, speed=1, stream_mode=False, valid_start_idx=None, overlap_len=None, slice_indices=None):
         quantized = self.quantizer.decode(codes)
         quantized = F.interpolate(quantized, size=quantized.shape[-1] * 2, mode="nearest")
         if ge.shape[-1] != 1: ge = F.interpolate(ge, size=ge.shape[-1] * 2, mode="nearest")
@@ -374,7 +324,6 @@ class SynthesizerTrn(nn.Module):
         m_p, logs_p, y_mask = self.enc_p.infer(
             quantized,
             text,
-            text_mask,
             self.ge_to512(ge.transpose(2, 1)).transpose(2, 1),
             speed,
             stream_mode,
@@ -387,35 +336,8 @@ class SynthesizerTrn(nn.Module):
 
         z_p = m_p + torch.randn_like(m_p) * torch.exp(logs_p) * noise_scale
 
-        if cuda_graph:
-            z_current_length = z_p.size(-1)
-            for (batch_size, z_max_length) in self.cuda_graph_buckets:
-                if batch_size == 1 and z_max_length >= z_current_length:
-                    bucket: Bucket = self.cuda_graph_buckets[(batch_size, z_max_length)]
-                    break
-            else:
-                bucket = None
-        else:
-            bucket = None
-
-        if bucket:
-            z_p_padded = F.pad(z_p, (0, z_max_length-z_current_length), value=0.0)
-            y_mask_padded = F.pad(y_mask, (0, z_max_length-z_current_length), value=0.0)
-
-            bucket.flow_z_p_padded.copy_(z_p_padded)
-            bucket.flow_y_mask_padded.copy_(y_mask_padded)
-            bucket.flow_ge.copy_(ge)
-
-            # 使用 CUDA Graph（如果可用）或普通执行
-            if bucket.vits_cuda_graph is not None:
-                bucket.vits_cuda_graph.replay()
-                o = bucket.dec_o[:, :, :z_current_length * self.samples_per_frame]
-            else:
-                z = self.flow(z_p, y_mask, ge)
-                o = self.dec(z * y_mask, g=ge)
-        else:
-            z = self.flow(z_p, y_mask, ge)
-            o = self.dec(z * y_mask, g=ge)
+        z = self.flow(z_p, y_mask, ge)
+        o = self.dec(z * y_mask, g=ge)
         
         attn = self.enc_p.mrte.cross_attention.attn
             
