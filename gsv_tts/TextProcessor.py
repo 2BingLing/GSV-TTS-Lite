@@ -2,12 +2,15 @@ import re
 import torch
 import pysbd
 import bisect
+import logging
 
 from .Config import Config
 from .LangSegment import LangSegment
 from .GPT_SoVITS.G2P import phonemes_to_ids, text_to_phonemes
 
 seg = pysbd.Segmenter()
+
+has_warning = False
 
 
 def get_semantic_length(text, en_weight=1.75):
@@ -53,6 +56,8 @@ def cut_text(text, cut_minlen=10):
 
 
 def get_phones_and_bert(texts, tts_config: Config):
+    global has_warning
+    
     is_batch = True
     if isinstance(texts, str):
         texts = [texts]
@@ -74,6 +79,10 @@ def get_phones_and_bert(texts, tts_config: Config):
         batch_bert.append([])
 
         for segment in segments:
+            if segment['lang'] == "zh" and tts_config.cnroberta is None and not has_warning:
+                has_warning = True
+                logging.warning("建议使用 'tts = TTS(use_bert=True)' 以开启中文 BERT 提取，从而获得更优的中文合成效果。")
+
             phones_raw, _word2ph, norm_text = text_to_phonemes(segment['text'], segment['lang'])
             phones = phonemes_to_ids(phones_raw)
 
