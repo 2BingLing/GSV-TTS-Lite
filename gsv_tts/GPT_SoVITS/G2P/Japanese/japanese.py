@@ -1,6 +1,23 @@
 # modified from https://github.com/CjangCjengh/vits/blob/main/text/japanese.py
 import re
+import os
+import sys
 import pyopenjtalk
+from contextlib import contextmanager
+
+
+@contextmanager
+def suppress_c_stderr():
+    # 屏蔽C++底层的警告
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    old_stderr = os.dup(sys.stderr.fileno())
+    try:
+        os.dup2(devnull, sys.stderr.fileno())
+        yield
+    finally:
+        os.dup2(old_stderr, sys.stderr.fileno())
+        os.close(devnull)
+        os.close(old_stderr)
 
 
 class JapaneseG2P:
@@ -36,11 +53,26 @@ class JapaneseG2P:
         N = len(labels)
 
         phones = []
-        # 记录每个 node 对应的音素总数
         node_phone_counts = [0] * len(features)
-        
+
+        expected_base_counts = []
+        for node in features:
+            if node['pron'] == 'IDLE':
+                expected_base_counts.append(0)
+            else:
+                # 使用 g2p 获取该词的标准音素序列
+                # 用 split() 打断后统计长度，这就是该词应占用的基础音素数量
+                with suppress_c_stderr():
+                    ph_str = pyopenjtalk.g2p(node['pron'])
+                expected_base_counts.append(len(ph_str.split()) if ph_str else 0)
+
         node_idx = 0
-        
+        current_base_consumed = 0
+
+        # 跳过开头那些发音为空（如 IDLE）的节点
+        while node_idx < len(features) - 1 and expected_base_counts[node_idx] == 0:
+            node_idx += 1
+
         for n in range(N):
             lab_curr = labels[n]
             p3 = re.search(r"\-(.*?)\+", lab_curr).group(1)
@@ -48,24 +80,6 @@ class JapaneseG2P:
             if drop_unvoiced_vowels and p3 in "AEIOU":
                 p3 = p3.lower()
 
-            # 处理特殊符号
-            res_p = None
-            if p3 == "sil":
-                if n == 0: res_p = "^"
-                elif n == N - 1:
-                    e3 = self._numeric_feature_by_regex(r"!(\d+)_", lab_curr)
-                    res_p = "$" if e3 == 0 else "?"
-            elif p3 == "pau":
-                res_p = "_"
-            else:
-                res_p = p3
-
-            if res_p:
-                phones.append(res_p)
-                if p3 not in ["sil", "pau"]:
-                    node_phone_counts[node_idx] += 1
-
-            # 韵律符号处理
             has_other = False
             if p3 not in ["sil", "pau"]:
                 a1 = self._numeric_feature_by_regex(r"/A:([0-9\-]+)\+", lab_curr)
@@ -87,15 +101,36 @@ class JapaneseG2P:
                 if has_other:
                     node_phone_counts[node_idx] += 1
 
-            if n < N - 1:
-                # 判断是否即将进入下一个词
-                # 使用正则表达式提取当前词在 label 中的位置信息
-                # 如果下一个 label 的词开始标识变化了，则 node_idx += 1
-                curr_word_id = self._numeric_feature_by_regex(r"/C:(\d+)_", lab_curr)
-                next_word_id = self._numeric_feature_by_regex(r"/C:(\d+)_", labels[n+1])
-                if curr_word_id != next_word_id and p3 not in ["sil", "pau"]:
-                    if node_idx < len(features) - 1:
-                        node_idx += 1
+            res_p = None
+            is_sentence_boundary_sil = False
+
+            if p3 == "sil":
+                if n == 0: 
+                    res_p = "^"
+                    is_sentence_boundary_sil = True # 句首静音不计入词的发音配额
+                elif n == N - 1:
+                    e3 = self._numeric_feature_by_regex(r"!(\d+)_", lab_curr)
+                    res_p = "$" if e3 == 0 else "?"
+                    is_sentence_boundary_sil = True # 句尾静音不计入词的发音配额
+                else:
+                    res_p = "_"
+            elif p3 == "pau":
+                res_p = "_"
+            else:
+                res_p = p3
+
+            if res_p:
+                phones.append(res_p)
+                
+                # 如果是句首句尾将要被裁掉的 sil，就不算进词汇的音素数量里
+                if not is_sentence_boundary_sil:
+                    node_phone_counts[node_idx] += 1
+                    current_base_consumed += 1
+
+                    # 如果当前词的配额已经用完，且还没到句子末尾，就移动到下一个词
+                    while node_idx < len(features) - 1 and current_base_consumed >= expected_base_counts[node_idx]:
+                        current_base_consumed -= expected_base_counts[node_idx] # 清空已用配额
+                        node_idx += 1 # 指针推向下个词
 
         for i, node in enumerate(features):
             surface = node['string']

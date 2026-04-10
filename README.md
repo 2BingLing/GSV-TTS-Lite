@@ -46,7 +46,7 @@
 
 为了打破这一限制，**GSV-TTS-Lite** 应运而生，它是基于 **GPT-SoVITS V2Pro** 开发的推理后端。通过一些深度优化技术，本项目成功在低显存环境下实现了毫秒级的实时响应。
 
-除了性能上的飞跃，**GSV-TTS-Lite** 还实现了**音色与风格的解耦**，支持独立控制说话人的音色与情感，并加入了**字幕时间戳对齐**与**音色迁移**等特色功能。
+除了性能上的飞跃，**GSV-TTS-Lite** 还实现了**音色与风格的解耦**，支持独立控制说话人的音色与情感，并加入了**字级时间戳对齐**与**音色迁移**等特色功能。
 
 为了便于开发者集成，**GSV-TTS-Lite** 大幅精简了代码架构，并已作为 `gsv-tts-lite` 库发布至 PyPI，支持通过 `pip` 一键安装。
 
@@ -87,7 +87,6 @@
 
 ### 环境准备
 
-- **FFmpeg**
 - **CUDA Toolkit**
 > [!IMPORTANT]
 > 当前版本已全面支持 **CUDA**、**MPS (Apple Silicon)** 及 **CPU** 推理后端。
@@ -217,7 +216,7 @@ class SubtitlesQueue:
 
 tts = TTS(use_bert=True)
 
-# infer、infer_stream、infer_batched、infer_vc 其实都支持字幕时间戳的返回，这里只是通过 infer_stream 举个例子
+# infer、infer_stream、infer_batched、infer_vc 其实都支持字级时间戳的返回，这里只是通过 infer_stream 举个例子
 subtitlesqueue = SubtitlesQueue()
 
 # infer_stream 实现了 Token 级别的流式输出，显著降低了首字延迟，能够实现极低延迟的实时反馈体验。

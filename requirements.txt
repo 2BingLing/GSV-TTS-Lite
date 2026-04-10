@@ -1,6 +1,6 @@
 einops
 tqdm
-torchcodec
+av
 transformers
 sounddevice
 safetensors

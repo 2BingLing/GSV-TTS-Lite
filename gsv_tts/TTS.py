@@ -15,6 +15,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(filename)s - %(levelname)s: %(message)s'
 )
+import av
 import torchaudio
 import numpy as np
 from tqdm import tqdm
@@ -28,7 +29,6 @@ from .Download import check_pretrained_models, download_model
 from .TextProcessor import get_phones_and_bert, cut_text, sub2text_index
 from .GPT_SoVITS.Featurizer import CNHubert, CNRoberta
 from .GPT_SoVITS.SV import ERes2Net
-from .GPT_SoVITS.SoVITS.module.mel_processing import spectrogram_torch
 from .GPT_SoVITS.G2P import text_to_phonemes
 from .Player import AudioQueue, AudioClip
 from .Config import Config, global_config
@@ -101,6 +101,7 @@ class TTS:
         self.gpt_models: dict[str, Gpt] = {}
         self.sovits_models: dict[str, Sovits] = {}
         self.resample_transform_dict = {}
+        self.spectrogram_transform_dict = {}
         self.spk_audio_cache = {}
         self.prompt_audio_cache = {}
 
@@ -1417,7 +1418,7 @@ class TTS:
         return text.endswith(self.punctuation) or text[-3:] in ["...", "。。。"]
     
     def _get_prompt(self, cnhubert_model: CNHubert, sovits_model: Sovits, audio_path: str):
-        wav, sr = torchaudio.load(audio_path)
+        wav, sr = self._load_audio(audio_path)
         wav = wav.to(self.tts_config.device)
 
         wav16k = self._resample(wav, sr, 16000).mean(dim=0)
@@ -1444,7 +1445,7 @@ class TTS:
     
     def _get_spec(self, hps, filename):
         sr1 = int(hps.data.sampling_rate)
-        audio, sr0 = torchaudio.load(filename)
+        audio, sr0 = self._load_audio(filename)
 
         audio = audio.to(self.tts_config.device).float()
         if audio.shape[0] == 2:
@@ -1456,16 +1457,21 @@ class TTS:
         if maxx > 1:
             audio /= min(2, maxx)
 
-        spec = spectrogram_torch(
-            audio,
-            hps.data.filter_length,
-            hps.data.sampling_rate,
-            hps.data.hop_length,
-            hps.data.win_length,
-            center=False,
-        )
+        key = "%s-%s-%s" % (hps.data.filter_length, hps.data.hop_length, hps.data.win_length)
+        if key not in self.spectrogram_transform_dict:
+            self.spectrogram_transform_dict[key] = torchaudio.transforms.Spectrogram(
+                n_fft=hps.data.filter_length,
+                win_length=hps.data.win_length,
+                hop_length=hps.data.hop_length,
+                center=True,
+                pad_mode="reflect",
+                power=1.0,
+            ).to(self.tts_config.device)
+        spectrogram_torch = self.spectrogram_transform_dict[key]
 
+        spec = spectrogram_torch(audio)
         spec = spec.to(self.tts_config.dtype)
+
         audio = self._resample(audio, sr1, 16000)
         audio = audio.to(self.tts_config.dtype)
 
@@ -1673,6 +1679,20 @@ class TTS:
         assign_path[:first_zero_idx] = -1
 
         return assign_path
+    
+    def _load_audio(self, audio_path):
+        # 摆脱FFmpeg繁琐的手动安装
+        with av.open(audio_path) as container:
+            stream = container.streams.audio[0]
+            resampler = av.AudioResampler(format='flt', layout='mono', rate=stream.rate)
+            
+            frames = []
+            for frame in container.decode(stream):
+                for resampled_frame in resampler.resample(frame):
+                    frames.append(resampled_frame.to_ndarray())
+                    
+            audio_data = np.concatenate(frames, axis=1)
+            return torch.from_numpy(audio_data), stream.rate
     
     def _empty_cache(self):
         try:

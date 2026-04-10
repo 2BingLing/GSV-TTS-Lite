@@ -46,7 +46,7 @@ The original motivation for this project was the pursuit of ultimate performance
 
 To break through these limitations, **GSV-TTS-Lite** was developed as an inference backend based on **GPT-SoVITS V2Pro**. Through deep optimization techniques, this project successfully achieves millisecond-level real-time response in low-VRAM environments.
 
-Beyond the leap in performance, **GSV-TTS-Lite** implements the **decoupling of timbre and style**, supporting independent control over the speaker's voice and emotion. It also features **subtitle timestamp alignment** and **voice conversion (timbre transfer)**.
+Beyond the leap in performance, **GSV-TTS-Lite** implements the **decoupling of timbre and style**, supporting independent control over the speaker's voice and emotion. It also features **character-level timestamps alignment** and **voice conversion (timbre transfer)**.
 
 To facilitate integration for developers, **GSV-TTS-Lite** features a significantly streamlined code architecture and is available on PyPI as the `gsv-tts-lite` library, supporting one-click installation via `pip`.
 
@@ -69,7 +69,6 @@ As shown, **GSV-TTS-Lite** achieves **3x ~ 4x** speed improvements while **halvi
 
 ### Prerequisites
 
-- **FFmpeg**
 - **CUDA Toolkit**
 > [!IMPORTANT]
 > The current version provides full support for CUDA, MPS (Apple Silicon), and CPU inference backends.
@@ -200,7 +199,7 @@ class SubtitlesQueue:
 
 tts = TTS()
 
-# infer, infer_stream, and infer_batched all support returning subtitle timestamps; infer_stream is used here just as an example.
+# infer, infer_stream, and infer_batched all support returning character-level timestamps; infer_stream is used here just as an example.
 subtitlesqueue = SubtitlesQueue()
 
 # infer_stream implements token-level streaming output, significantly reducing first-token latency and enabling a ultra-low latency real-time feedback experience.

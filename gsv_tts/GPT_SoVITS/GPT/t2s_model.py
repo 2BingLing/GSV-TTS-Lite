@@ -435,10 +435,10 @@ class Text2SemanticDecoder(nn.Module):
             if idx < initial_suppression_steps:
                 logits[:, self.mute_tokens] = -float("Inf")
 
-            samples = sample(logits, pre_tokens, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
-
-            if torch.argmax(logits, dim=-1)[0] == self.EOS or samples[0, 0] == self.EOS:
+            if torch.argmax(logits, dim=-1)[0] == self.EOS:
                 break
+
+            samples = sample(logits[:, :-1], pre_tokens, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
 
             pre_tokens = torch.concat([pre_tokens, samples], dim=1)
 
@@ -515,10 +515,10 @@ class Text2SemanticDecoder(nn.Module):
             if idx < initial_suppression_steps:
                 logits[:, self.mute_tokens] = -float("Inf")
 
-            samples = sample(logits, pre_tokens, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
-
-            if torch.argmax(logits, dim=-1)[0] == self.EOS or samples[0, 0] == self.EOS:
+            if torch.argmax(logits, dim=-1)[0] == self.EOS:
                 break
+
+            samples = sample(logits[:, :-1], pre_tokens, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
 
             pre_tokens = torch.concat([pre_tokens, samples], dim=1)
 
@@ -636,7 +636,7 @@ class Text2SemanticDecoder(nn.Module):
 
                 logits = self.ar_predict_layer(xy_dec[:, -1])
 
-                samples = sample(logits, pre_tokens, pre_tokens_lens=bucket.kv_cache_len, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
+                samples = sample(logits[:, :-1], pre_tokens, pre_tokens_lens=bucket.kv_cache_len, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
                 
                 is_reached = bucket.kv_cache_len == bucket.max_kv_cache
                 if is_reached.any():
@@ -645,7 +645,7 @@ class Text2SemanticDecoder(nn.Module):
                         is_reached.fill_(False)
                         bucket: Bucket = buckets[bucket_i]
                 
-                eos_in_current_step = (torch.argmax(logits, dim=-1) == self.EOS) | (samples[:, 0] == self.EOS) | is_reached
+                eos_in_current_step = (torch.argmax(logits, dim=-1) == self.EOS) | is_reached
                 finished = (~ignore_batch) & eos_in_current_step
 
                 if finished.any():
