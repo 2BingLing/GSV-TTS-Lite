@@ -512,7 +512,7 @@ if __name__ == "__main__":
             return False
         
     parser = argparse.ArgumentParser(description="GSV-TTS")
-    parser.add_argument("--gpt_cache_len", type=int, default=512, help="GPT KV cache 上下文长度")
+    parser.add_argument("--gpt_cache_len", type=int, default=1024, help="GPT KV cache 上下文长度")
     parser.add_argument("--gpt_batch_size", type=int, default=8, help="GPT 最大并行推理大小")
     parser.add_argument("--use_bert", type=str2bool, default=True, help="使用BERT提升中文语义理解能力")
     parser.add_argument("--use_flash_attn", type=str2bool, default=False, help="使用Flash Attn加速推理")
@@ -571,8 +571,17 @@ if __name__ == "__main__":
 
 
 
+    batch_sizes = [1] + list(range(4, args.gpt_batch_size, 4)) + [args.gpt_batch_size]
+    cache_lens = []
+    length = 512
+    while length <= args.gpt_cache_len:
+        cache_lens.append(length)
+        length *= 2
+    
+    gpt_cache = [(b, c) for b in batch_sizes for c in cache_lens]
+
     tts = TTS(
-        gpt_cache=[(1, args.gpt_cache_len)] + [(B, args.gpt_cache_len) for B in range(4, args.gpt_batch_size-1, 4)] + [(args.gpt_batch_size, args.gpt_cache_len)],
+        gpt_cache=gpt_cache,
         sovits_cache=[],
         use_bert=args.use_bert,
         use_flash_attn=args.use_flash_attn,

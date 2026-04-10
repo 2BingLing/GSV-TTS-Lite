@@ -15,9 +15,18 @@ async def main():
     
     models_dir = base_dir / "WebUI" / "models"
     
+    max_cache_len = 1024
+    batch_sizes = [1, 4, 8]
+    cache_lens = []
+    length = 512
+    while length <= max_cache_len:
+        cache_lens.append(length)
+        length *= 2
+    gpt_cache = [(b, c) for b in batch_sizes for c in cache_lens]
+    
     tts = TTS(
         models_dir=str(models_dir),
-        gpt_cache=[(1, 512), (4, 512), (8, 512)],
+        gpt_cache=gpt_cache,
         sovits_cache=[50],
     )
     
