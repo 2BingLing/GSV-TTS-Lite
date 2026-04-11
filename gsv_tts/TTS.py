@@ -272,7 +272,7 @@ class TTS:
         text: str,
         is_cut_text: bool = True,
         cut_minlen: int = 10,
-        cut_mute: int = 0.3,
+        cut_mute: int = 0.4,
         cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 0.8, "，": 0.8, ":": 0.8, "：": 0.8, ";": 0.8, "；": 0.8, "~": 0.8, "、": 0.6, "・": 0.6},
         stream_mode: Literal["token", "sentence"] = "token",
         stream_chunk: int = 25,
@@ -475,7 +475,7 @@ class TTS:
         return_subtitles: bool = False,
         is_cut_text: bool = True,
         cut_minlen: int = 10,
-        cut_mute: int = 0.3,
+        cut_mute: int = 0.4,
         cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 0.8, "，": 0.8, ":": 0.8, "：": 0.8, ";": 0.8, "；": 0.8, "~": 0.8, "、": 0.6, "・": 0.6},
         top_k: int = 15,
         top_p: float = 1.0,
@@ -999,7 +999,7 @@ class TTS:
         return_subtitles: bool = False,
         is_cut_text: bool = True,
         cut_minlen: int = 10,
-        cut_mute: int = 0.3,
+        cut_mute: int = 0.4,
         cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 0.8, "，": 0.8, ":": 0.8, "：": 0.8, ";": 0.8, "；": 0.8, "~": 0.8, "、": 0.6, "・": 0.6},
         top_k: int = 15,
         top_p: float = 1.0,
@@ -1503,7 +1503,7 @@ class TTS:
         
         return head_offset
     
-    def _find_head_threshold_offsets(self, audio, threshold=0.02, frame_length=512, hop_length=256, search_len=32000):
+    def _find_head_threshold_offsets(self, audio, threshold=0.02, frame_length=512, hop_length=256, search_len=64000):
         threshold = threshold * audio.max()
 
         search_audio_head = audio[:search_len]
@@ -1521,10 +1521,12 @@ class TTS:
             
         return head_offset
 
-    def _find_tail_threshold_offsets(self, audio, threshold=0.02, frame_length=512, hop_length=256, search_len=32000):
+    def _find_tail_threshold_offsets(self, audio, threshold=0.02, frame_length=512, hop_length=256, search_len=64000):
         threshold = threshold * audio.max()
 
         search_audio_tail = audio[-search_len:]
+        actual_len = search_audio_tail.shape[0]
+        
         frames_tail = search_audio_tail.unfold(0, frame_length, hop_length)
         rms_tail = torch.sqrt(torch.mean(frames_tail**2, dim=1))
         
@@ -1533,7 +1535,7 @@ class TTS:
         
         if tail_indices.numel() > 0:
             tail_frame_idx = tail_indices[-1].item()
-            tail_offset = search_len - (tail_frame_idx * hop_length)
+            tail_offset = actual_len - (tail_frame_idx * hop_length)
         else:
             tail_offset = 1
             
