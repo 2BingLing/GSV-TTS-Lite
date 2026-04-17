@@ -88,7 +88,7 @@ pip install torch torchvision torchaudio
 #### 2.	Install GSV-TTS-Lite
 If you have prepared the above basic environment, you can directly execute the following command to complete the integration:
 ```bash 
-pip install gsv-tts-lite==0.3.11
+pip install gsv-tts-lite==0.3.12
 ```
 
 ### WebUI Visual Interface
@@ -244,7 +244,7 @@ from gsv_tts import TTS
 
 tts = TTS()
 
-# Although infer_vc supports few-shot voice conversion and offers convenience, its conversion quality still has room for improvement compared to specialized voice conversion models like RVC or SVC.
+# Although infer_vc supports zero-shot voice conversion and offers convenience, its conversion quality still has room for improvement compared to specialized voice conversion models like RVC or SVC.
 audio = tts.infer_vc(
     spk_audio_path="examples\laffey.mp3",
     prompt_audio_path="examples\AnAn.ogg",
