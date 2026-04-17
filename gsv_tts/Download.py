@@ -142,3 +142,33 @@ def check_pretrained_models(models_dir):
                 filename="g2p.zip",
                 dir=models_dir,
             )
+
+
+cnroberta_onnx_base_url = "https://modelscope.cn/models/ltyytn/cnroberta/resolve/master/%s"
+
+
+def download_cnroberta_onnx(dir, download_url=None):
+    """下载 CNRoberta ONNX 模型（包含 config.json, tokenizer.json, cnroberta_fp16.onnx）"""
+    if download_url is None:
+        download_url = cnroberta_onnx_base_url
+    
+    os.makedirs(dir, exist_ok=True)
+    
+    files_to_download = [
+        "config.json",
+        "tokenizer.json",
+        "cnroberta_fp16.onnx",
+    ]
+    
+    for filename in files_to_download:
+        url = download_url % filename
+        filepath = Path(dir) / filename
+        
+        if os.path.exists(filepath):
+            logging.info(f"文件已存在，跳过: {filepath}")
+            continue
+        
+        logging.info(f"正在下载: {filename}")
+        download_file(url, filepath)
+    
+    logging.info(f"CNRoberta ONNX 模型下载完成: {dir}")
