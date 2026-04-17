@@ -25,7 +25,7 @@ from torch.nn import functional as F
 from safetensors.torch import save_model
 
 from .Loader import get_gpt_weights, get_sovits_weights, Gpt, Sovits
-from .Download import check_pretrained_models, download_model, download_cnroberta_onnx
+from .Download import check_pretrained_models, download_model
 from .TextProcessor import get_phones_and_bert, cut_text, sub2text_index
 from .GPT_SoVITS.Featurizer import CNHubert, CNRoberta
 from .GPT_SoVITS.SV import ERes2Net
@@ -115,10 +115,10 @@ class TTS:
         
         self._bert_loaded = False
         if use_bert:
-            onnx_path = self.cnroberta_path / "cnroberta_fp16.onnx"
-            if not os.path.exists(onnx_path):
-                download_cnroberta_onnx(
-                    dir=self.cnroberta_path,
+            if not os.path.exists(self.cnroberta_path):
+                download_model(
+                    filename="chinese-roberta.zip",
+                    dir=self.models_dir,
                 )
             self.tts_config.cnroberta = CNRoberta(self.cnroberta_path, self.tts_config)
             self._bert_loaded = True
@@ -1405,10 +1405,10 @@ class TTS:
             return
         if not self.auto_bert:
             return
-        onnx_path = self.cnroberta_path / "cnroberta_fp16.onnx"
-        if not os.path.exists(onnx_path):
-            download_cnroberta_onnx(
-                dir=self.cnroberta_path,
+        if not os.path.exists(self.cnroberta_path):
+            download_model(
+                filename="chinese-roberta.zip",
+                dir=self.models_dir,
             )
         self.tts_config.cnroberta = CNRoberta(self.cnroberta_path, self.tts_config)
         self._bert_loaded = True
