@@ -239,7 +239,7 @@ from gsv_tts import TTS
     # 建议根据实际需求将 batch 和 sequence_length 分段定义，以优化 CUDA 显存利用率及推理性能。
     # 注意：
     # 1. 设置的最大 batch_size 决定了该模式下的最大并发吞吐量；
-    # 2. 设置的同一批次下最大 sequence_length 决定了单次生成的最大文本长度限制。
+    # 2. 设置的同一批次下最大 sequence_length 决定了单次生成的最大长度限制。
 
 tts = TTS(use_bert=True)
 

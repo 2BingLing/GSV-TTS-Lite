@@ -235,12 +235,12 @@ https://github.com/user-attachments/assets/3d2758b3-a283-48b0-960e-a9389dd73129
 ```python
 from gsv_tts import TTS
 
-# TTSパラメータ 'gpt_cache': GPTモデルのCUDAグラフ用静的キャッシュ設定。
-    # パラメータはタプルのリスト [(batch_size, sequence_length), ...] で指定します。
-    # CUDAメモリ使用効率と推論性能を最適化するため、実際の利用シーンに合わせて batch と sequence_length を細かく分けて定義することを推奨します。
+# TTSクラスの引数 gpt_cache: GPTモデルのCUDAグラフ用静的キャッシュ設定。
+    # 設定値はタプルのリスト [(batch_size, sequence_length), ...] です。
+    # 必要に応じてbatchとsequence_lengthを細分化して定義することで、CUDAメモリ使用効率と推論パフォーマンスを最適化できます。
     # 注意:
-    # 1. 設定された最大 batch_size が、このモードでの最大スループット（同時並行処理数）を決定します。
-    # 2. 同一バッチ内における最大 sequence_length が、1回の生成で扱える最大テキスト長を決定します。
+    # 1. 設定した最大 batch_size は、バッチ処理における最大スループットを決定します。
+    # 2. 指定したバッチ内の最大 sequence_length は、一度に生成可能な最大テキスト長を決定します。
 
 tts = TTS()
 

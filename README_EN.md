@@ -236,12 +236,12 @@ https://github.com/user-attachments/assets/3d2758b3-a283-48b0-960e-a9389dd73129
 ```python
 from gsv_tts import TTS
 
-# TTS parameter 'gpt_cache': Static cache configuration for the GPT model's CUDA graph.
-    # The parameter accepts a list of tuples: [(batch_size, sequence_length), ...].
-    # It is recommended to define granular segments for batch and sequence_length based on your specific use case to optimize CUDA memory usage and inference performance.
+# TTS parameter gpt_cache: Static cache configuration for the GPT model's CUDA graph.
+    # Expects a list of tuples: [(batch_size, sequence_length), ...].
+    # Defining specific segments for batch_size and sequence_length based on your needs helps optimize CUDA memory usage and inference performance.
     # Note:
-    # 1. The maximum batch_size determines the maximum concurrent throughput.
-    # 2. The maximum sequence_length within a batch determines the maximum generation limit per sample.
+    # 1. The maximum batch_size determines the maximum throughput for batch processing.
+    # 2. The maximum sequence_length within a batch determines the maximum generation length per request.
 
 tts = TTS()
 
