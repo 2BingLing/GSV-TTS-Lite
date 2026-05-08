@@ -323,6 +323,17 @@ print("声纹相似度：", similarity)
 #### `get_spk_audio_list()` / `get_prompt_audio_list()`
 获取缓存中的音频数据列表。
 
+### 3. 异步调用
+
+#### `infer_async(...)`
+`infer` 方法的异步版本。
+
+#### `infer_stream_async(...)`
+`infer_stream` 方法的异步版本。
+
+#### `infer_batched_async(...)`
+`infer_batched` 方法的异步版本。
+
 </details>
 
 ## Flash Attn

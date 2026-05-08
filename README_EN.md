@@ -325,6 +325,17 @@ Remove audio data from the cache.
 #### `get_spk_audio_list()` / `get_prompt_audio_list()`
 Get the list of audio data in the cache.
 
+### 3. Asynchronous Invocations
+
+#### `infer_async(...)`
+Asynchronous version of the `infer` method.
+
+#### `infer_stream_async(...)`
+Asynchronous version of the `infer_stream` method.
+
+#### `infer_batched_async(...)`
+Asynchronous version of the `infer_batched` method.
+
 </details>
 
 ## Flash Attn

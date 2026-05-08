@@ -324,6 +324,17 @@ PyTorch 形式のモデル重みファイル（.pth または .ckpt）を safete
 #### `get_spk_audio_list()` / `get_prompt_audio_list()`
 キャッシュ内のオーディオデータリストを取得します。
 
+### 3. 非同期呼び出し
+
+#### `infer_async(...)`
+`infer` メソッドの非同期バージョン。
+
+#### `infer_stream_async(...)`
+`infer_stream` メソッドの非同期バージョン。
+
+#### `infer_batched_async(...)`
+`infer_batched` メソッドの非同期バージョン。
+
 </details>
 
 ## Flash Attn
