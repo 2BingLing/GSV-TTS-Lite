@@ -236,6 +236,13 @@ https://github.com/user-attachments/assets/3d2758b3-a283-48b0-960e-a9389dd73129
 ```python
 from gsv_tts import TTS
 
+# TTS parameter 'gpt_cache': Static cache configuration for the GPT model's CUDA graph.
+    # The parameter accepts a list of tuples: [(batch_size, sequence_length), ...].
+    # It is recommended to define granular segments for batch and sequence_length based on your specific use case to optimize CUDA memory usage and inference performance.
+    # Note:
+    # 1. The maximum batch_size determines the maximum concurrent throughput.
+    # 2. The maximum sequence_length within a batch determines the maximum generation limit per sample.
+
 tts = TTS()
 
 # infer_batched is optimized specifically for long-form text and multi-sentence synthesis scenarios. This mode not only offers significant advantages in processing efficiency but also supports assigning different reference audios to different sentences within the same batch, providing high synthesis freedom and flexibility.
@@ -244,6 +251,8 @@ audios = tts.infer_batched(
     prompt_audio_paths="examples\AnAn.ogg",
     prompt_audio_texts="ちが……ちがう。レイア、貴様は間違っている。",
     texts=["へぇー、ここまでしてくれるんですね。", "The old map crinkled in Leo’s trembling hands."],
+    bert_batch_size=20,
+    sovits_batch_size=10,
 )
 
 for i, audio in enumerate(audios):
