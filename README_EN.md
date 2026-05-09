@@ -97,7 +97,7 @@ pip install torch torchvision torchaudio
 #### 2.	Install GSV-TTS-Lite
 If you have prepared the above basic environment, you can directly execute the following command to complete the integration:
 ```bash 
-pip install gsv-tts-lite==0.3.18
+pip install gsv-tts-lite==0.4.0
 ```
 
 ### WebUI Visual Interface
@@ -163,6 +163,7 @@ audio.play()
 tts.audio_queue.wait()
 # tts.audio_queue.stop() # Stop playback
 ```
+https://github.com/user-attachments/assets/72635b40-7287-4318-a5e9-aea93adfabf9
 
 #### 2. Stream Inference / Subtitle Synchronization
 ```python
@@ -188,15 +189,13 @@ class SubtitlesQueue:
 
             for subtitle in subtitles:
                 if subtitle["start_s"] > time.time() - last_t:
-                    while time.time() - last_t <= subtitle["start_s"]:
-                        time.sleep(0.01)
+                    time.sleep(subtitle["start_s"] - (time.time() - last_t))
 
                 if subtitle["end_s"] and subtitle["end_s"] > time.time() - last_t:
                     if subtitle["orig_idx_end"] > last_i:
                         print(text[last_i:subtitle["orig_idx_end"]], end="", flush=True)
                         last_i = subtitle["orig_idx_end"]
-                        while time.time() - last_t <= subtitle["end_s"]:
-                            time.sleep(0.01)
+                        time.sleep(subtitle["end_s"] - (time.time() - last_t))
 
         self.t = None
     
@@ -206,7 +205,7 @@ class SubtitlesQueue:
             self.t = threading.Thread(target=self.process, daemon=True)
             self.t.start()
 
-tts = TTS()
+tts = TTS(sovits_cache=[55]) # 55 = stream_chunk * 2 + overlap_len = 25 * 2 + 5
 
 # infer, infer_stream, and infer_batched all support returning character-level timestamps; infer_stream is used here just as an example.
 subtitlesqueue = SubtitlesQueue()
@@ -218,6 +217,7 @@ generator = tts.infer_stream(
     prompt_audio_text="ちが……ちがう。レイア、貴様は間違っている。",
     text="へぇー、ここまでしてくれるんですね。",
     stream_chunk = 25,
+    overlap_len = 5,
     return_subtitles=True,
     debug=False,
 )
@@ -230,6 +230,7 @@ tts.audio_queue.wait()
 subtitlesqueue.add(None, None)
 print()
 ```
+https://github.com/user-attachments/assets/3d2758b3-a283-48b0-960e-a9389dd73129
 
 #### 3. Batched Inference
 ```python
@@ -248,6 +249,7 @@ audios = tts.infer_batched(
 for i, audio in enumerate(audios):
     audio.save(f"audio{i}.wav")
 ```
+https://github.com/user-attachments/assets/c2edeb24-b2a8-4360-9d68-8866efbed30c
 
 #### 4. Voice Conversion
 ```python
