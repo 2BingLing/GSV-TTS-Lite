@@ -12,7 +12,6 @@ def multinomial_sample_one_no_sync(
 def logits_to_probs(
     logits,
     previous_tokens: Optional[torch.Tensor] = None,
-    pre_tokens_lens: Optional[torch.Tensor] = None,
     temperature: float = 1.0,
     top_k: Optional[int] = None,
     top_p: Optional[float] = None,
@@ -20,19 +19,11 @@ def logits_to_probs(
 ):
     if previous_tokens is not None and repetition_penalty != 1.0:
         score = torch.gather(logits, dim=1, index=previous_tokens)
-        penalized_score = torch.where(
+        score = torch.where(
             score < 0,
             score * repetition_penalty,
             score / repetition_penalty,
         )
-
-        if pre_tokens_lens is not None:
-            arange = torch.arange(previous_tokens.shape[-1], device=previous_tokens.device).unsqueeze(0)
-            mask = arange < pre_tokens_lens.unsqueeze(1)
-            score = torch.where(mask, penalized_score, score)
-        else:
-            score = penalized_score
-
         logits.scatter_(dim=1, index=previous_tokens, src=score)
 
     if top_p is not None and top_p < 1.0:

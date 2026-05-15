@@ -240,7 +240,7 @@ class TTS:
                 pred_semantic, phones2_tensor, ge, noise_scale=noise_scale, speed=speed
             )
 
-            audio = audio[0, 0, :].float().cpu().numpy()
+            audio = audio[0, 0, :]
             assign = self._viterbi_monotonic(attn)
             
             if return_subtitles:
@@ -257,7 +257,14 @@ class TTS:
                 subtitles = sub2text_index(subtitles, norm_text, text)
             else:
                 subtitles = None
+            
+            head_offset = self._find_head_threshold_offsets(audio)
+            audio = self._fade_head(audio[head_offset:])
+            if subtitles:
+                self._increment_subtitle_times(subtitles, -head_offset/self.samplerate)
+                subtitles[0]["start_s"] = max(0, subtitles[0]["start_s"])
 
+            audio = audio.float().cpu().numpy()
             max_audio = np.abs(audio).max()
             if max_audio > 1:
                 audio = audio / max_audio
@@ -282,8 +289,8 @@ class TTS:
         return_subtitles: bool = False,
         is_cut_text: bool = True,
         cut_minlen: int = 10,
-        cut_mute: int = 0.3,
-        cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 0.8, "，": 0.8, ":": 0.8, "：": 0.8, ";": 0.8, "；": 0.8, "~": 0.8, "、": 0.6, "・": 0.6},
+        cut_mute: int = 0.4,
+        cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 1.0, "，": 1.0, ":": 1.0, "：": 1.0, ";": 1.0, "；": 1.0, "~": 1.0, "、": 0.8, "・": 0.8},
         stream_mode: Literal["token", "sentence"] = "token",
         stream_chunk: int = 25,
         overlap_len: int = 5,
@@ -434,6 +441,13 @@ class TTS:
                             subtitles = self._get_subtitles(word2ph, assign, speed, last_end_s=last_end_s)
                         else:
                             subtitles = []
+                    
+                    if chunk_idx == 0:
+                        head_offset = self._find_head_threshold_offsets(audio)
+                        audio = self._fade_head(audio[head_offset:])
+                    if subtitles:
+                        self._increment_subtitle_times(subtitles, -head_offset/self.samplerate)
+                        subtitles[0]["start_s"] = max(last_end_s, subtitles[0]["start_s"])
 
                     if is_final:
                         if text_cut[-1] in cut_mute_scale_map:
@@ -495,7 +509,7 @@ class TTS:
         is_cut_text: bool = True,
         cut_minlen: int = 10,
         cut_mute: int = 0.4,
-        cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 0.8, "，": 0.8, ":": 0.8, "：": 0.8, ";": 0.8, "；": 0.8, "~": 0.8, "、": 0.6, "・": 0.6},
+        cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 1.0, "，": 1.0, ":": 1.0, "：": 1.0, ";": 1.0, "；": 1.0, "~": 1.0, "、": 0.8, "・": 0.8},
         top_k: int = 15,
         top_p: float = 1.0,
         temperature: float = 1.0,
@@ -772,11 +786,6 @@ class TTS:
                         actual_len = int(subtitle[-1]["end_s"] * self.samplerate)
                         audio = audio_batch[last_actual_len:actual_len]
 
-                        head_offset = self._find_quietest_offsets(audio)
-                        audio = audio[head_offset:]
-
-                        subtitle[0]["start_s"] += head_offset / self.samplerate
-
                         head_offset = self._find_head_threshold_offsets(audio)
                         tail_offset = self._find_tail_threshold_offsets(audio)
                         audio = self._fade(audio[head_offset:-tail_offset]).float().cpu().numpy()
@@ -794,9 +803,6 @@ class TTS:
                         actual_len = last_actual_len + curr_lengths[j] * 2 * vq_model.samples_per_frame / speed
                         audio = audio_batch[int(last_actual_len):int(actual_len)]
                         last_actual_len = actual_len
-
-                        head_offset = self._find_quietest_offsets(audio)
-                        audio = audio[head_offset:]
 
                         head_offset = self._find_head_threshold_offsets(audio)
                         tail_offset = self._find_tail_threshold_offsets(audio)
@@ -1013,8 +1019,8 @@ class TTS:
         return_subtitles: bool = False,
         is_cut_text: bool = True,
         cut_minlen: int = 10,
-        cut_mute: int = 0.3,
-        cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 0.8, "，": 0.8, ":": 0.8, "：": 0.8, ";": 0.8, "；": 0.8, "~": 0.8, "、": 0.6, "・": 0.6},
+        cut_mute: int = 0.4,
+        cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 1.0, "，": 1.0, ":": 1.0, "：": 1.0, ";": 1.0, "；": 1.0, "~": 1.0, "、": 0.8, "・": 0.8},
         stream_mode: Literal["token", "sentence"] = "token",
         stream_chunk: int = 25,
         overlap_len: int = 5,
@@ -1096,7 +1102,7 @@ class TTS:
         is_cut_text: bool = True,
         cut_minlen: int = 10,
         cut_mute: int = 0.4,
-        cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 0.8, "，": 0.8, ":": 0.8, "：": 0.8, ";": 0.8, "；": 0.8, "~": 0.8, "、": 0.6, "・": 0.6},
+        cut_mute_scale_map: dict = {"…": 2.0, ".": 1.5, "。": 1.5, "?": 1.5, "？": 1.5, "!": 1.5, "！": 1.5, ",": 1.0, "，": 1.0, ":": 1.0, "：": 1.0, ";": 1.0, "；": 1.0, "~": 1.0, "、": 0.8, "・": 0.8},
         top_k: int = 15,
         top_p: float = 1.0,
         temperature: float = 1.0,
@@ -1546,7 +1552,7 @@ class TTS:
         
         head_offset = self._find_head_threshold_offsets(wav16k)
         tail_offset = self._find_tail_threshold_offsets(wav16k)
-        wav16k = wav16k[head_offset:-tail_offset]
+        wav16k = self._fade(wav16k[head_offset:-tail_offset])
 
         silence = torch.zeros(int(16000 * 0.3), device=wav16k.device, dtype=wav16k.dtype)
         wav16k = torch.cat([wav16k, silence])
@@ -1614,18 +1620,7 @@ class TTS:
         f2_real = torch.cat([f_faded, f2_aligned[:, :, overlap_len:]], dim=-1)
         return f2_real, offset
     
-    def _find_quietest_offsets(self, audio, frame_length=512, hop_length=256, search_len=12800):
-        search_audio = audio[:search_len]
-        frames = search_audio.unfold(0, frame_length, hop_length)
-        rms_values = torch.sqrt(torch.mean(frames**2, dim=1))
-        best_frame_idx = torch.argmin(rms_values).item()
-        head_offset = best_frame_idx * hop_length
-        
-        return head_offset
-    
-    def _find_head_threshold_offsets(self, audio, threshold=0.02, frame_length=512, hop_length=256, search_len=64000):
-        threshold = threshold * audio.max()
-
+    def _find_head_threshold_offsets(self, audio, threshold=0.02, frame_length=512, hop_length=256, search_len=64000, margin=1600):
         search_audio_head = audio[:search_len]
         frames_head = search_audio_head.unfold(0, frame_length, hop_length)
         rms_head = torch.sqrt(torch.mean(frames_head**2, dim=1))
@@ -1637,7 +1632,9 @@ class TTS:
             head_frame_idx = head_indices[0].item()
             head_offset = head_frame_idx * hop_length
         else:
-            head_offset = 1
+            head_offset = 0
+        
+        head_offset = max(0, head_offset-margin)
             
         return head_offset
 
@@ -1660,6 +1657,13 @@ class TTS:
             tail_offset = 1
             
         return tail_offset
+
+    def _fade_head(self, audio, fade_len=1600):
+        audio = audio.clone()
+        fade_in_vec = torch.linspace(0, 1, fade_len, device=audio.device)
+        audio[:fade_len] *= fade_in_vec
+        
+        return audio
     
     def _fade(self, audio, fade_len=1600):
         audio = audio.clone()
@@ -1743,6 +1747,12 @@ class TTS:
         for subtitle in subtitles:
             subtitle["orig_idx_start"] += increment
             subtitle["orig_idx_end"] += increment
+    
+    def _increment_subtitle_times(self, subtitles, increment):
+        for subtitle in subtitles:
+            subtitle["start_s"] += increment
+            if subtitle["end_s"]:
+                subtitle["end_s"] += increment
 
     def _viterbi_monotonic(self, attn: torch.Tensor):
         B, T, N = attn.shape

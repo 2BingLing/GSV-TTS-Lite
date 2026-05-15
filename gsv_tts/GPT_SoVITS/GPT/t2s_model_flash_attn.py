@@ -568,7 +568,6 @@ class Text2SemanticDecoder(nn.Module):
         pe_cache = pe_cache.transpose(0, 1)
 
         pre_tokens = torch.zeros((batch_size, max_bucket.max_kv_cache), dtype=torch.int64, device=device)
-        pre_tokens[:actual_batch_size, :y_lens.max()] = batch_y
 
         # prefill
         xy_dec = self.t2s_transformer.process_prompt(xy_pos, bucket.k_cache[:, :actual_batch_size], bucket.v_cache[:, :actual_batch_size], bucket.kv_cache_len[:actual_batch_size], prompt_attn_mask)
@@ -576,7 +575,7 @@ class Text2SemanticDecoder(nn.Module):
 
         bucket.kv_cache_len[:actual_batch_size].copy_(xy_lens)
 
-        samples = sample(logits[:, :-1], pre_tokens[:actual_batch_size], pre_tokens_lens=bucket.kv_cache_len[:actual_batch_size], top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
+        samples = sample(logits[:, :-1], top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
         pre_tokens[batch_indices, bucket.kv_cache_len][:actual_batch_size] = samples.squeeze()
         y_emb = self.ar_audio_embedding(samples)
         xy_pos = y_emb * self.ar_audio_position.x_scale + pe_cache[bucket.kv_cache_len[:actual_batch_size]-x_lens]
@@ -607,7 +606,7 @@ class Text2SemanticDecoder(nn.Module):
 
                 logits = self.ar_predict_layer(xy_dec[:, -1])
 
-                samples = sample(logits, pre_tokens, pre_tokens_lens=bucket.kv_cache_len, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
+                samples = sample(logits, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0] # 在想出更好的方案之前，暂时取消repetition_penalty
                 
                 pre_tokens[batch_indices, bucket.kv_cache_len] = samples.squeeze()
                 
@@ -630,7 +629,7 @@ class Text2SemanticDecoder(nn.Module):
                         if finished.any():
                             finished_indices = finished.nonzero(as_tuple=True)[0]
                             for i in finished_indices:
-                                generated_segment = pre_tokens[i, bucket.kv_cache_len[i]-decode_steps[i] : bucket.kv_cache_len[i]]
+                                generated_segment = pre_tokens[i, bucket.kv_cache_len[i]-decode_steps[i]+1 : bucket.kv_cache_len[i]]
                                 eos_indices = (generated_segment == self.EOS).nonzero(as_tuple=True)[0]
                                 if eos_indices.numel() > 0:
                                     first_eos_idx = eos_indices[0].item()
@@ -668,9 +667,8 @@ class Text2SemanticDecoder(nn.Module):
 
                                     x_lens[i].copy_(single_x.shape[0])
                                     bucket.kv_cache_len[i].copy_(single_x.shape[0] + single_y.shape[0])
-                                    pre_tokens[i, :single_y.shape[0]] = single_y
 
-                                    new_samples = sample(logits[:, :-1], single_y.unsqueeze(0), top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
+                                    new_samples = sample(logits[:, :-1], top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
                                     samples[i:i+1] = new_samples
 
                                     batch_orig_idx[i] = current_batch
