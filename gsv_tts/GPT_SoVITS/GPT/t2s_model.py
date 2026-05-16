@@ -167,7 +167,7 @@ class Text2SemanticDecoder(nn.Module):
         self.p_dropout = config["model"]["dropout"]
         self.EOS = config["model"]["EOS"]
 
-        self.mute_tokens = [280, 486]
+        self.suppressed_tokens = [280, 486, self.EOS]
 
         self.bert_proj = nn.Linear(1024, self.embedding_dim)
         self.ar_text_embedding = TokenEmbedding(
@@ -400,7 +400,7 @@ class Text2SemanticDecoder(nn.Module):
 
         xy_dec = self.t2s_transformer.process_prompt(xy_pos, bucket.k_cache, bucket.v_cache, bucket.kv_cache_len, prompt_attn_mask)
         logits = self.ar_predict_layer(xy_dec[:, -1])
-        logits[:, self.mute_tokens] = -float("Inf")
+        logits[:, self.suppressed_tokens] = -float("Inf")
         samples = sample(logits[:, :-1], pre_tokens, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
         pre_tokens = torch.concat([pre_tokens, samples], dim=1)
         y_emb = self.ar_audio_embedding(samples)
@@ -429,7 +429,7 @@ class Text2SemanticDecoder(nn.Module):
             logits = self.ar_predict_layer(xy_dec[:, -1])
 
             if idx < initial_suppression_steps:
-                logits[:, self.mute_tokens] = -float("Inf")
+                logits[:, self.suppressed_tokens] = -float("Inf")
 
             samples = sample(logits, pre_tokens, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
             
@@ -483,7 +483,7 @@ class Text2SemanticDecoder(nn.Module):
 
         xy_dec = self.t2s_transformer.process_prompt(xy_pos, bucket.k_cache, bucket.v_cache, bucket.kv_cache_len, prompt_attn_mask)
         logits = self.ar_predict_layer(xy_dec[:, -1])
-        logits[:, self.mute_tokens] = -float("Inf")
+        logits[:, self.suppressed_tokens] = -float("Inf")
         samples = sample(logits[:, :-1], pre_tokens, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
         pre_tokens = torch.concat([pre_tokens, samples], dim=1)
         y_emb = self.ar_audio_embedding(samples)
@@ -514,7 +514,7 @@ class Text2SemanticDecoder(nn.Module):
             logits = self.ar_predict_layer(xy_dec[:, -1])
 
             if idx < initial_suppression_steps:
-                logits[:, self.mute_tokens] = -float("Inf")
+                logits[:, self.suppressed_tokens] = -float("Inf")
 
             samples = sample(logits, pre_tokens, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty, temperature=temperature)[0]
             
