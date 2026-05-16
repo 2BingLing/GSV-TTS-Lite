@@ -256,10 +256,10 @@ class TTS:
 
                 subtitles = sub2text_index(subtitles, norm_text, text)
             else:
-                subtitles = None
+                subtitles = []
             
             head_offset = self._find_head_threshold_offsets(audio)
-            audio = self._fade_head(audio[head_offset:])
+            audio = audio[head_offset:]
             if subtitles:
                 self._increment_subtitle_times(subtitles, -head_offset/self.samplerate)
                 subtitles[0]["start_s"] = max(0, subtitles[0]["start_s"])
@@ -441,10 +441,12 @@ class TTS:
                             subtitles = self._get_subtitles(word2ph, assign, speed, last_end_s=last_end_s)
                         else:
                             subtitles = []
+                    else:
+                        subtitles = []
                     
                     if chunk_idx == 0:
                         head_offset = self._find_head_threshold_offsets(audio)
-                        audio = self._fade_head(audio[head_offset:])
+                        audio = audio[head_offset:]
                     if subtitles:
                         self._increment_subtitle_times(subtitles, -head_offset/self.samplerate)
                         subtitles[0]["start_s"] = max(last_end_s, subtitles[0]["start_s"])
@@ -460,7 +462,7 @@ class TTS:
                         silence = torch.zeros((int(cut_mute * cut_mute_scale * self.samplerate),), dtype=audio.dtype, device=audio.device)
                         audio = torch.concatenate([audio, silence])
 
-                        if return_subtitles:
+                        if subtitles:
                             if not self._check_pause(subtitles[-1]['text']):
                                 subtitles.append({
                                     "text": word2ph['word'][-1],
@@ -470,17 +472,14 @@ class TTS:
                             subtitles[-1]['end_s'] += cut_mute * cut_mute_scale
                             last_end_s = subtitles[-1]['end_s']
 
-                    if return_subtitles:
-                        if subtitles:
-                            subtitles = sub2text_index(subtitles, norm_text, text_cut)
-                            self._increment_subtitle_indices(subtitles, cur_text_l)
-                            new_subtitles = subtitles[last_subtitles_end:]
-                            last_subtitles_end = len(subtitles)-1
-                            if not is_final and new_subtitles: new_subtitles[-1]['end_s'] = None
-                        else:
-                            new_subtitles = []
+                    if subtitles:
+                        subtitles = sub2text_index(subtitles, norm_text, text_cut)
+                        self._increment_subtitle_indices(subtitles, cur_text_l)
+                        new_subtitles = subtitles[last_subtitles_end:]
+                        last_subtitles_end = len(subtitles)-1
+                        if not is_final and new_subtitles: new_subtitles[-1]['end_s'] = None
                     else:
-                        new_subtitles = None
+                        new_subtitles = []
 
                     audio = audio.float().cpu().numpy()
 
@@ -787,11 +786,9 @@ class TTS:
                         audio = audio_batch[last_actual_len:actual_len]
 
                         head_offset = self._find_head_threshold_offsets(audio)
-                        tail_offset = self._find_tail_threshold_offsets(audio)
-                        audio = self._fade(audio[head_offset:-tail_offset]).float().cpu().numpy()
+                        audio = audio[head_offset:].float().cpu().numpy()
 
                         subtitle[0]["start_s"] += head_offset / self.samplerate
-                        subtitle[-1]["end_s"] -= tail_offset / self.samplerate
 
                         subtitle = sub2text_index(subtitle, all_norm_text[curr_orig_indices[j]], texts[curr_orig_indices[j]])
 
@@ -805,8 +802,7 @@ class TTS:
                         last_actual_len = actual_len
 
                         head_offset = self._find_head_threshold_offsets(audio)
-                        tail_offset = self._find_tail_threshold_offsets(audio)
-                        audio = self._fade(audio[head_offset:-tail_offset]).float().cpu().numpy()
+                        audio = audio[head_offset:].float().cpu().numpy()
 
                         generated_audios.append(audio)
 
@@ -855,7 +851,7 @@ class TTS:
                     subtitle = self._cat_subtitles(*subtitles_list)
                     result.append(AudioClip(self.audio_queue, audio, self.samplerate, audio_len_s, subtitle, orig_text))
                 else:
-                    result.append(AudioClip(self.audio_queue, audio, self.samplerate, audio_len_s, None, orig_text))
+                    result.append(AudioClip(self.audio_queue, audio, self.samplerate, audio_len_s, [], orig_text))
             
             return tuple(result)
         
@@ -1550,10 +1546,6 @@ class TTS:
         wav16k = self._resample(wav, sr, 16000).mean(dim=0)
         wav16k = wav16k.to(self.tts_config.dtype)
         
-        head_offset = self._find_head_threshold_offsets(wav16k)
-        tail_offset = self._find_tail_threshold_offsets(wav16k)
-        wav16k = self._fade(wav16k[head_offset:-tail_offset])
-
         silence = torch.zeros(int(16000 * 0.3), device=wav16k.device, dtype=wav16k.dtype)
         wav16k = torch.cat([wav16k, silence])
 
@@ -1620,7 +1612,7 @@ class TTS:
         f2_real = torch.cat([f_faded, f2_aligned[:, :, overlap_len:]], dim=-1)
         return f2_real, offset
     
-    def _find_head_threshold_offsets(self, audio, threshold=0.02, frame_length=512, hop_length=256, search_len=64000, margin=1600):
+    def _find_head_threshold_offsets(self, audio, threshold=0.03, frame_length=512, hop_length=256, search_len=64000, margin=1600):
         search_audio_head = audio[:search_len]
         frames_head = search_audio_head.unfold(0, frame_length, hop_length)
         rms_head = torch.sqrt(torch.mean(frames_head**2, dim=1))
@@ -1631,48 +1623,11 @@ class TTS:
         if head_indices.numel() > 0:
             head_frame_idx = head_indices[0].item()
             head_offset = head_frame_idx * hop_length
+            head_offset = max(0, head_offset-margin)
         else:
-            head_offset = 0
-        
-        head_offset = max(0, head_offset-margin)
+            head_offset = search_audio_head.shape[0]
             
         return head_offset
-
-    def _find_tail_threshold_offsets(self, audio, threshold=0.02, frame_length=512, hop_length=256, search_len=64000):
-        threshold = threshold * audio.max()
-
-        search_audio_tail = audio[-search_len:]
-        actual_len = search_audio_tail.shape[0]
-        
-        frames_tail = search_audio_tail.unfold(0, frame_length, hop_length)
-        rms_tail = torch.sqrt(torch.mean(frames_tail**2, dim=1))
-        
-        tail_mask = rms_tail > threshold
-        tail_indices = torch.nonzero(tail_mask)
-        
-        if tail_indices.numel() > 0:
-            tail_frame_idx = tail_indices[-1].item()
-            tail_offset = actual_len - (tail_frame_idx * hop_length)
-        else:
-            tail_offset = 1
-            
-        return tail_offset
-
-    def _fade_head(self, audio, fade_len=1600):
-        audio = audio.clone()
-        fade_in_vec = torch.linspace(0, 1, fade_len, device=audio.device)
-        audio[:fade_len] *= fade_in_vec
-        
-        return audio
-    
-    def _fade(self, audio, fade_len=1600):
-        audio = audio.clone()
-        fade_in_vec = torch.linspace(0, 1, fade_len, device=audio.device)
-        fade_out_vec = torch.linspace(1, 0, fade_len, device=audio.device)
-        audio[:fade_len] *= fade_in_vec
-        audio[-fade_len:] *= fade_out_vec
-        
-        return audio
     
     def _get_subtitles(self, word2ph, assign, speed, last_end_s = 0):
         frame_time = (1 / self.sovits_hz) / speed
