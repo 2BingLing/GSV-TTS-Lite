@@ -1612,7 +1612,7 @@ class TTS:
         f2_real = torch.cat([f_faded, f2_aligned[:, :, overlap_len:]], dim=-1)
         return f2_real, offset
     
-    def _find_head_threshold_offsets(self, audio, threshold=0.03, frame_length=512, hop_length=256, search_len=64000, margin=1600):
+    def _find_head_threshold_offsets(self, audio, threshold=0.02, frame_length=512, hop_length=256, search_len=64000, margin=3200):
         search_audio_head = audio[:search_len]
         frames_head = search_audio_head.unfold(0, frame_length, hop_length)
         rms_head = torch.sqrt(torch.mean(frames_head**2, dim=1))
